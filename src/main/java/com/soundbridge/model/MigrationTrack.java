@@ -13,11 +13,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
-import lombok.Getter;
-import lombok.Setter;
 
-@Getter
-@Setter
 @Entity
 @Table(name = "migration_tracks")
 public class MigrationTrack {
@@ -46,6 +42,12 @@ public class MigrationTrack {
     @Column(name = "target_track_url")
     private String targetTrackUrl;
 
+    @Column(name = "target_track_title")
+    private String targetTrackTitle;
+
+    @Column(name = "target_thumbnail_url")
+    private String targetThumbnailUrl;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "match_status", nullable = false)
     private TrackMatchStatus matchStatus;
@@ -64,5 +66,109 @@ public class MigrationTrack {
         if (createdAt == null) {
             createdAt = Instant.now();
         }
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public MigrationJob getJob() {
+        return job;
+    }
+
+    public void setJob(MigrationJob job) {
+        this.job = job;
+    }
+
+    public String getSourceTrackName() {
+        return sourceTrackName;
+    }
+
+    public void setSourceTrackName(String sourceTrackName) {
+        this.sourceTrackName = sourceTrackName;
+    }
+
+    public String getSourceArtistName() {
+        return sourceArtistName;
+    }
+
+    public void setSourceArtistName(String sourceArtistName) {
+        this.sourceArtistName = sourceArtistName;
+    }
+
+    public String getSourceAlbumName() {
+        return sourceAlbumName;
+    }
+
+    public void setSourceAlbumName(String sourceAlbumName) {
+        this.sourceAlbumName = sourceAlbumName;
+    }
+
+    public String getTargetTrackId() {
+        return targetTrackId;
+    }
+
+    public void setTargetTrackId(String targetTrackId) {
+        this.targetTrackId = targetTrackId;
+    }
+
+    public String getTargetTrackUrl() {
+        return targetTrackUrl;
+    }
+
+    public void setTargetTrackUrl(String targetTrackUrl) {
+        this.targetTrackUrl = targetTrackUrl;
+    }
+
+    public String getTargetTrackTitle() {
+        return targetTrackTitle;
+    }
+
+    public void setTargetTrackTitle(String targetTrackTitle) {
+        this.targetTrackTitle = targetTrackTitle;
+    }
+
+    public String getTargetThumbnailUrl() {
+        return targetThumbnailUrl;
+    }
+
+    public void setTargetThumbnailUrl(String targetThumbnailUrl) {
+        this.targetThumbnailUrl = targetThumbnailUrl;
+    }
+
+    public TrackMatchStatus getMatchStatus() {
+        return matchStatus;
+    }
+
+    public void setMatchStatus(TrackMatchStatus matchStatus) {
+        this.matchStatus = matchStatus;
+    }
+
+    public Double getConfidenceScore() {
+        return confidenceScore;
+    }
+
+    public void setConfidenceScore(Double confidenceScore) {
+        this.confidenceScore = confidenceScore;
+    }
+
+    public String getFailureReason() {
+        return failureReason;
+    }
+
+    public void setFailureReason(String failureReason) {
+        this.failureReason = failureReason;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
     }
 }

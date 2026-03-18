@@ -20,10 +20,15 @@ create table if not exists migration_tracks (
     source_album_name text,
     target_track_id text,
     target_track_url text,
+    target_track_title text,
+    target_thumbnail_url text,
     match_status varchar(32) not null,
     confidence_score double precision,
     failure_reason text,
     created_at timestamptz not null default now()
 );
+
+alter table if exists migration_tracks add column if not exists target_track_title text;
+alter table if exists migration_tracks add column if not exists target_thumbnail_url text;
 
 create index if not exists idx_migration_tracks_job_id on migration_tracks(job_id);

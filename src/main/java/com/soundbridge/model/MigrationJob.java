@@ -10,11 +10,7 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
-import lombok.Getter;
-import lombok.Setter;
 
-@Getter
-@Setter
 @Entity
 @Table(name = "migration_jobs")
 public class MigrationJob {
@@ -67,5 +63,77 @@ public class MigrationJob {
     @PreUpdate
     public void onUpdate() {
         updatedAt = Instant.now();
+    }
+
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    public String getSourcePlaylistUrl() {
+        return sourcePlaylistUrl;
+    }
+
+    public void setSourcePlaylistUrl(String sourcePlaylistUrl) {
+        this.sourcePlaylistUrl = sourcePlaylistUrl;
+    }
+
+    public String getTargetPlatform() {
+        return targetPlatform;
+    }
+
+    public void setTargetPlatform(String targetPlatform) {
+        this.targetPlatform = targetPlatform;
+    }
+
+    public JobStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(JobStatus status) {
+        this.status = status;
+    }
+
+    public int getTotalTracks() {
+        return totalTracks;
+    }
+
+    public void setTotalTracks(int totalTracks) {
+        this.totalTracks = totalTracks;
+    }
+
+    public int getMatchedTracks() {
+        return matchedTracks;
+    }
+
+    public void setMatchedTracks(int matchedTracks) {
+        this.matchedTracks = matchedTracks;
+    }
+
+    public int getFailedTracks() {
+        return failedTracks;
+    }
+
+    public void setFailedTracks(int failedTracks) {
+        this.failedTracks = failedTracks;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
     }
 }

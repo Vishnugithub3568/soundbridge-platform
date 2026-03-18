@@ -2,7 +2,7 @@ package com.soundbridge.model;
 
 public enum JobStatus {
     QUEUED,
-    PROCESSING,
+    RUNNING,
     COMPLETED,
     FAILED
 }
