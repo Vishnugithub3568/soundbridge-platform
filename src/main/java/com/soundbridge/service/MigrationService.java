@@ -57,9 +57,30 @@ public class MigrationService {
         return MigrationJobResponse.from(job);
     }
 
+    public MigrationJobResponse retryFailedTracks(UUID jobId) {
+        MigrationJob job = getJobEntity(jobId);
+        if (job.getStatus() == JobStatus.RUNNING || job.getStatus() == JobStatus.QUEUED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Migration job is already in progress");
+        }
+
+        if (job.getFailedTracks() <= 0) {
+            return MigrationJobResponse.from(job);
+        }
+
+        job.setStatus(JobStatus.QUEUED);
+        jobRepository.saveAndFlush(job);
+        applicationContext.getBean(MigrationService.class).retryFailedTracksAsync(jobId);
+        return MigrationJobResponse.from(job);
+    }
+
     @Async("migrationTaskExecutor")
     public void processMigrationAsync(UUID jobId) {
         migrationAsyncProcessor.processMigration(jobId);
+    }
+
+    @Async("migrationTaskExecutor")
+    public void retryFailedTracksAsync(UUID jobId) {
+        migrationAsyncProcessor.retryFailedTracks(jobId);
     }
 
     @Transactional(readOnly = true)

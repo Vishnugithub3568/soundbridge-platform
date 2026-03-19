@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import JobSummaryCard from '../components/JobSummaryCard';
 import TrackTable from '../components/TrackTable';
-import { getMigrationJob, getMigrationReport, getMigrationTracks, startMigration } from '../services/apiService';
+import {
+  getMigrationJob,
+  getMigrationReport,
+  getMigrationTracks,
+  retryFailedTracks,
+  startMigration
+} from '../services/apiService';
 
 const TERMINAL_STATUSES = new Set(['COMPLETED', 'FAILED']);
 
@@ -13,6 +19,7 @@ function MigrationPage() {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showFailedOnly, setShowFailedOnly] = useState(false);
 
   const canSubmit = useMemo(() => playlistUrl.trim().length > 0 && !loading, [playlistUrl, loading]);
 
@@ -23,6 +30,13 @@ function MigrationPage() {
     const processed = (job.matchedTracks || 0) + (job.failedTracks || 0);
     return Math.min(100, Math.round((processed / job.totalTracks) * 100));
   }, [job]);
+
+  const visibleTracks = useMemo(() => {
+    if (!showFailedOnly) {
+      return tracks;
+    }
+    return tracks.filter((track) => track.matchStatus === 'FAILED');
+  }, [tracks, showFailedOnly]);
 
   const refreshJobData = async (jobId) => {
     const [jobData, tracksData, reportData] = await Promise.all([
@@ -85,6 +99,26 @@ function MigrationPage() {
       setError('Migration failed. Please review track-level errors and try again.');
     }
   }, [job?.status, error]);
+
+  const handleRetryFailed = async () => {
+    if (!job?.id || loading) {
+      return;
+    }
+
+    setError('');
+    setLoading(true);
+
+    try {
+      const queuedJob = await retryFailedTracks(job.id);
+      setJob(queuedJob);
+      await refreshJobData(job.id);
+    } catch (retryError) {
+      setError(retryError?.response?.data?.message || retryError.message || 'Failed to retry failed tracks');
+      setLoading(false);
+    }
+  };
+
+  const canRetryFailed = Boolean(job?.id) && !loading && (job?.failedTracks || 0) > 0;
 
   return (
     <main className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-8 md:px-6">
@@ -149,7 +183,36 @@ function MigrationPage() {
       ) : null}
 
       <JobSummaryCard job={job} progressPercent={progressPercent} loading={loading} report={report} />
-      <TrackTable tracks={tracks} />
+
+      <motion.section
+        className="rounded-2xl border border-clay bg-white/80 p-4 shadow-panel"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <label className="inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
+            <input
+              type="checkbox"
+              checked={showFailedOnly}
+              onChange={(event) => setShowFailedOnly(event.target.checked)}
+              className="h-4 w-4 rounded border-clay text-mint focus:ring-mint"
+            />
+            Show only failed tracks
+          </label>
+
+          <button
+            type="button"
+            disabled={!canRetryFailed}
+            onClick={handleRetryFailed}
+            className="rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Retry failed tracks
+          </button>
+        </div>
+      </motion.section>
+
+      <TrackTable tracks={visibleTracks} />
     </main>
   );
 }

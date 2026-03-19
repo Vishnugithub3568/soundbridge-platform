@@ -48,9 +48,18 @@ public class MigrationTrack {
     @Column(name = "target_thumbnail_url")
     private String targetThumbnailUrl;
 
+    @Column(name = "youtube_video_id")
+    private String youtubeVideoId;
+
+    @Column(name = "youtube_title")
+    private String youtubeTitle;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "match_status", nullable = false)
     private TrackMatchStatus matchStatus;
+
+    @Column(name = "match_score")
+    private Double matchScore;
 
     @Column(name = "confidence_score")
     private Double confidenceScore;
@@ -148,6 +157,14 @@ public class MigrationTrack {
         this.matchStatus = matchStatus;
     }
 
+    public Double getMatchScore() {
+        return matchScore;
+    }
+
+    public void setMatchScore(Double matchScore) {
+        this.matchScore = matchScore;
+    }
+
     public Double getConfidenceScore() {
         return confidenceScore;
     }
@@ -162,6 +179,22 @@ public class MigrationTrack {
 
     public void setFailureReason(String failureReason) {
         this.failureReason = failureReason;
+    }
+
+    public String getYouTubeVideoId() {
+        return youtubeVideoId;
+    }
+
+    public void setYouTubeVideoId(String youtubeVideoId) {
+        this.youtubeVideoId = youtubeVideoId;
+    }
+
+    public String getYouTubeTitle() {
+        return youtubeTitle;
+    }
+
+    public void setYouTubeTitle(String youtubeTitle) {
+        this.youtubeTitle = youtubeTitle;
     }
 
     public Instant getCreatedAt() {

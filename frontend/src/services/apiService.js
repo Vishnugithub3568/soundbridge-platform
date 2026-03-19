@@ -23,3 +23,8 @@ export async function getMigrationReport(jobId) {
   const response = await api.get(`/migrate/${jobId}/report`);
   return response.data;
 }
+
+export async function retryFailedTracks(jobId) {
+  const response = await api.post(`/migrate/${jobId}/retry-failed`);
+  return response.data;
+}

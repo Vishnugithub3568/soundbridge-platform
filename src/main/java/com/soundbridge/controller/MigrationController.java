@@ -53,4 +53,10 @@ public class MigrationController {
     public MigrationReportResponse getMigrationReport(@PathVariable UUID jobId) {
         return migrationService.getReport(jobId);
     }
+
+    @PostMapping("/migrate/{jobId}/retry-failed")
+    public ResponseEntity<MigrationJobResponse> retryFailedTracks(@PathVariable UUID jobId) {
+        MigrationJobResponse response = migrationService.retryFailedTracks(jobId);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
+    }
 }

@@ -20,7 +20,10 @@ create table if not exists migration_tracks (
     target_track_url varchar(2048),
     target_track_title varchar(1024),
     target_thumbnail_url varchar(2048),
+    youtube_video_id varchar(512),
+    youtube_title varchar(1024),
     match_status varchar(32) not null,
+    match_score double precision,
     confidence_score double precision,
     failure_reason varchar(2048),
     created_at timestamp with time zone not null,
@@ -29,5 +32,8 @@ create table if not exists migration_tracks (
 
 alter table migration_tracks add column if not exists target_track_title varchar(1024);
 alter table migration_tracks add column if not exists target_thumbnail_url varchar(2048);
+alter table migration_tracks add column if not exists youtube_video_id varchar(512);
+alter table migration_tracks add column if not exists youtube_title varchar(1024);
+alter table migration_tracks add column if not exists match_score double precision;
 
 create index if not exists idx_migration_tracks_job_id on migration_tracks(job_id);
