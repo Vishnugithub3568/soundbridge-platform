@@ -3,6 +3,7 @@ package com.soundbridge.service;
 import com.soundbridge.dto.MigrationJobResponse;
 import com.soundbridge.dto.MigrationReportResponse;
 import com.soundbridge.dto.MigrationTrackResponse;
+import com.soundbridge.exception.MigrationException;
 import com.soundbridge.model.JobStatus;
 import com.soundbridge.model.MigrationJob;
 import com.soundbridge.repository.MigrationJobRepository;
@@ -15,7 +16,6 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class MigrationService {
@@ -40,7 +40,7 @@ public class MigrationService {
     public MigrationJobResponse startMigration(String spotifyPlaylistUrl) {
         String normalizedUrl = Objects.requireNonNullElse(spotifyPlaylistUrl, "").trim();
         if (normalizedUrl.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Spotify playlist URL is required");
+            throw new MigrationException("Spotify playlist URL is required", "MISSING_PLAYLIST_URL", 400);
         }
 
         MigrationJob job = new MigrationJob();
@@ -60,7 +60,7 @@ public class MigrationService {
     public MigrationJobResponse retryFailedTracks(UUID jobId) {
         MigrationJob job = getJobEntity(jobId);
         if (job.getStatus() == JobStatus.RUNNING || job.getStatus() == JobStatus.QUEUED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Migration job is already in progress");
+            throw new MigrationException("Migration job is already in progress", "JOB_IN_PROGRESS", 409);
         }
 
         if (job.getFailedTracks() <= 0) {
@@ -118,12 +118,12 @@ public class MigrationService {
 
     private MigrationJob getJobEntity(UUID jobId) {
         return jobRepository.findById(jobId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Migration job not found"));
+            .orElseThrow(() -> new MigrationException("Migration job not found", "JOB_NOT_FOUND", 404));
     }
 
     private void ensureJobExists(UUID jobId) {
         if (!jobRepository.existsById(jobId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Migration job not found");
+            throw new MigrationException("Migration job not found", "JOB_NOT_FOUND", 404);
         }
     }
 }

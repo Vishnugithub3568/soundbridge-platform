@@ -37,3 +37,19 @@ alter table migration_tracks add column if not exists youtube_title varchar(1024
 alter table migration_tracks add column if not exists match_score double precision;
 
 create index if not exists idx_migration_tracks_job_id on migration_tracks(job_id);
+
+-- User Management Tables (for Supabase Auth integration)
+create table if not exists users (
+    id uuid primary key,
+    email varchar(255) unique not null,
+    display_name varchar(255),
+    created_at timestamp with time zone not null default now(),
+    updated_at timestamp with time zone not null default now()
+);
+
+-- Add user_id to migration_jobs for multi-user support
+alter table migration_jobs add column if not exists user_id uuid;
+alter table migration_jobs add constraint fk_migration_jobs_user foreign key (user_id) references users(id) on delete cascade;
+
+create index if not exists idx_migration_jobs_user_id on migration_jobs(user_id);
+create index if not exists idx_users_email on users(email);
