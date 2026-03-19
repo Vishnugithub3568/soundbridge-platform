@@ -15,8 +15,45 @@ function getVideoId(track) {
   return track.youtubeVideoId || track.targetTrackId || null;
 }
 
+function getStatusColor(status) {
+  switch (status) {
+    case 'MATCHED':
+      return 'bg-emerald-100 text-emerald-700 border-emerald-300';
+    case 'PARTIAL':
+      return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+    case 'NOT_FOUND':
+      return 'bg-stone-100 text-stone-700 border-stone-300';
+    case 'FAILED':
+      return 'bg-red-100 text-red-700 border-red-300';
+    default:
+      return 'bg-stone-100 text-stone-700 border-stone-300';
+  }
+}
+
+function ScoreVisualization({ score }) {
+  if (!score) return <span className="text-gray-500">-</span>;
+  
+  const percentage = Math.round(score * 100);
+  const isGood = percentage >= 65;
+  
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-16 overflow-hidden rounded-full bg-stone-200 h-2">
+        <div 
+          className={`h-full transition-all ${isGood ? 'bg-emerald-500' : 'bg-amber-500'}`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+      <span className={`text-xs font-bold ${isGood ? 'text-emerald-600' : 'text-amber-600'}`}>
+        {percentage}%
+      </span>
+    </div>
+  );
+}
+
 function TrackTable({ tracks }) {
   const [previewTrack, setPreviewTrack] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ key: 'id', direction: 'asc' });
 
   const previewVideoId = useMemo(() => {
     if (!previewTrack) {
@@ -24,6 +61,46 @@ function TrackTable({ tracks }) {
     }
     return getVideoId(previewTrack);
   }, [previewTrack]);
+
+  const sortedTracks = useMemo(() => {
+    const sorted = [...(tracks || [])];
+    sorted.sort((a, b) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+      
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      
+      const aStr = String(aVal || '').toLowerCase();
+      const bStr = String(bVal || '').toLowerCase();
+      return sortConfig.direction === 'asc' 
+        ? aStr.localeCompare(bStr) 
+        : bStr.localeCompare(aStr);
+    });
+    return sorted;
+  }, [tracks, sortConfig]);
+
+  const handleSort = (key) => {
+    setSortConfig(prevConfig => ({
+      key,
+      direction: prevConfig.key === key && prevConfig.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const SortableHeader = ({ label, sortKey }) => (
+    <th 
+      className="py-2 pr-2 cursor-pointer hover:bg-stone-100 px-2 select-none"
+      onClick={() => handleSort(sortKey)}
+    >
+      <div className="flex items-center gap-1">
+        {label}
+        <span className="text-xs">
+          {sortConfig.key === sortKey ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+        </span>
+      </div>
+    </th>
+  );
 
   if (!tracks?.length) {
     return (
@@ -44,29 +121,30 @@ function TrackTable({ tracks }) {
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[950px] border-collapse text-sm">
           <thead>
-            <tr className="border-b border-clay text-left text-xs uppercase tracking-wide text-stone-500">
-              <th className="py-2 pr-2">Source</th>
-              <th className="py-2 pr-2">Artist</th>
-              <th className="py-2 pr-2">Status</th>
-              <th className="py-2 pr-2">Score</th>
-              <th className="py-2 pr-2">YouTube</th>
-              <th className="py-2 pr-2">Reason</th>
+            <tr className="border-b border-clay text-left text-xs uppercase tracking-wide text-stone-500 bg-stone-50">
+              <SortableHeader label="Source Track" sortKey="sourceTrackName" />
+              <SortableHeader label="Artist" sortKey="sourceArtistName" />
+              <SortableHeader label="Status" sortKey="matchStatus" />
+              <SortableHeader label="Match Score" sortKey="matchScore" />
+              <th className="py-2 pr-2">YouTube Result</th>
+              <th className="py-2 pr-2">Details</th>
             </tr>
           </thead>
           <tbody>
-            {tracks.map((track) => {
+            {sortedTracks.map((track) => {
               const thumbnail = getThumbnail(track);
+              const statusColor = getStatusColor(track.matchStatus);
               return (
-                <tr key={track.id} className="border-b border-clay/70 align-top">
-                  <td className="py-3 pr-2 font-medium">{track.sourceTrackName}</td>
-                  <td className="py-3 pr-2">{track.sourceArtistName}</td>
+                <tr key={track.id} className="border-b border-clay/70 align-top hover:bg-stone-50 transition">
+                  <td className="py-3 pr-2 font-medium max-w-xs truncate">{track.sourceTrackName}</td>
+                  <td className="py-3 pr-2 text-stone-600 max-w-xs truncate">{track.sourceArtistName}</td>
                   <td className="py-3 pr-2">
-                    <span className="rounded-full border border-stone-300 bg-stone-100 px-2 py-1 text-xs font-semibold">
+                    <span className={`rounded-full border ${statusColor} px-2 py-1 text-xs font-semibold inline-block`}>
                       {track.matchStatus}
                     </span>
                   </td>
                   <td className="py-3 pr-2">
-                    {track.confidenceScore ? `${(track.confidenceScore * 100).toFixed(0)}%` : '-'}
+                    <ScoreVisualization score={track.matchScore || track.confidenceScore} />
                   </td>
                   <td className="py-3 pr-2">
                     {track.targetTrackUrl ? (
@@ -75,7 +153,7 @@ function TrackTable({ tracks }) {
                           <button
                             type="button"
                             onClick={() => setPreviewTrack(track)}
-                            className="group relative overflow-hidden rounded-md border border-clay"
+                            className="group relative overflow-hidden rounded-md border border-clay flex-shrink-0"
                             title="Preview video"
                           >
                             <img
@@ -84,29 +162,35 @@ function TrackTable({ tracks }) {
                               className="h-14 w-24 object-cover transition duration-200 group-hover:brightness-90"
                             />
                             <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-xs font-bold text-white opacity-0 transition group-hover:opacity-100">
-                              Preview
+                              ▶
                             </span>
                           </button>
                         ) : null}
                         <div className="space-y-1">
-                          <p className="max-w-[220px] text-xs font-semibold text-stone-700">
+                          <p className="max-w-[220px] text-xs font-semibold text-stone-700 line-clamp-2">
                             {track.youtubeTitle || track.targetTrackTitle || 'Matched track'}
                           </p>
                           <a
                             href={track.targetTrackUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-xs font-bold text-mint underline-offset-2 hover:underline"
+                            className="text-xs font-bold text-mint underline-offset-2 hover:underline inline-block"
                           >
-                            Open on YouTube Music
+                            Open on YouTube Music →
                           </a>
                         </div>
                       </div>
                     ) : (
-                      '-'
+                      <span className="text-stone-400 text-xs">No match found</span>
                     )}
                   </td>
-                  <td className="py-3 pr-2 text-stone-600">{track.failureReason || '-'}</td>
+                  <td className="py-3 pr-2 text-xs text-stone-600 max-w-xs">
+                    {track.failureReason ? (
+                      <span className="text-red-600 font-medium">{track.failureReason}</span>
+                    ) : (
+                      <span className="text-emerald-600">✓ Matched</span>
+                    )}
+                  </td>
                 </tr>
               );
             })}

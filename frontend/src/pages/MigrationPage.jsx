@@ -191,24 +191,34 @@ function MigrationPage() {
         transition={{ duration: 0.3 }}
       >
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <label className="inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
-            <input
-              type="checkbox"
-              checked={showFailedOnly}
-              onChange={(event) => setShowFailedOnly(event.target.checked)}
-              className="h-4 w-4 rounded border-clay text-mint focus:ring-mint"
-            />
-            Show only failed tracks
-          </label>
+          <div className="flex items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
+              <input
+                type="checkbox"
+                checked={showFailedOnly}
+                onChange={(event) => setShowFailedOnly(event.target.checked)}
+                className="h-4 w-4 rounded border-clay text-mint focus:ring-mint"
+              />
+              Show only failed tracks
+            </label>
+            {showFailedOnly && tracks && (
+              <span className="text-xs font-bold text-stone-500 bg-stone-100 px-2 py-1 rounded-full">
+                {tracks.filter(t => t.matchStatus === 'FAILED').length} failed
+              </span>
+            )}
+          </div>
 
-          <button
-            type="button"
-            disabled={!canRetryFailed}
-            onClick={handleRetryFailed}
-            className="rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Retry failed tracks
-          </button>
+          {canRetryFailed && (
+            <button
+              type="button"
+              disabled={!canRetryFailed}
+              onClick={handleRetryFailed}
+              className="rounded-xl border-2 border-amber-400 bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-2 text-sm font-bold text-amber-700 transition hover:bg-amber-100 hover:border-amber-500 disabled:cursor-not-allowed disabled:opacity-50 flex items-center gap-2"
+            >
+              <span>🔄</span>
+              Retry Failed Tracks ({job?.failedTracks || 0})
+            </button>
+          )}
         </div>
       </motion.section>
 
