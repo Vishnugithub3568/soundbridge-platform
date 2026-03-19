@@ -21,6 +21,7 @@ import java.util.TreeSet;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -38,6 +39,7 @@ public class MigrationAsyncProcessor {
     private final YouTubeClient youTubeClient;
     private final double matchThreshold;
 
+    @Autowired
     public MigrationAsyncProcessor(
         MigrationJobRepository jobRepository,
         MigrationTrackRepository trackRepository,
