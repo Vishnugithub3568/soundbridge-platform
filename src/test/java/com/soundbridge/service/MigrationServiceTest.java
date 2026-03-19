@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationContext;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,11 +32,14 @@ class MigrationServiceTest {
     @Mock
     private MigrationAsyncProcessor migrationAsyncProcessor;
 
+    @Mock
+    private ApplicationContext applicationContext;
+
     private MigrationService migrationService;
 
     @BeforeEach
     void setUp() {
-        migrationService = new MigrationService(jobRepository, trackRepository, migrationAsyncProcessor);
+        migrationService = new MigrationService(jobRepository, trackRepository, migrationAsyncProcessor, applicationContext);
     }
 
     @Test
@@ -46,6 +50,7 @@ class MigrationServiceTest {
         saved.setSourcePlaylistUrl("https://open.spotify.com/playlist/abc");
 
         when(jobRepository.saveAndFlush(any(MigrationJob.class))).thenReturn(saved);
+        when(applicationContext.getBean(MigrationService.class)).thenReturn(migrationService);
         doNothing().when(migrationAsyncProcessor).processMigration(any(UUID.class));
 
         var response = migrationService.startMigration("https://open.spotify.com/playlist/abc");

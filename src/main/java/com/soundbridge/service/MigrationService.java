@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.context.ApplicationContext;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -21,15 +23,18 @@ public class MigrationService {
     private final MigrationJobRepository jobRepository;
     private final MigrationTrackRepository trackRepository;
     private final MigrationAsyncProcessor migrationAsyncProcessor;
+    private final ApplicationContext applicationContext;
 
     public MigrationService(
         MigrationJobRepository jobRepository,
         MigrationTrackRepository trackRepository,
-        MigrationAsyncProcessor migrationAsyncProcessor
+        MigrationAsyncProcessor migrationAsyncProcessor,
+        ApplicationContext applicationContext
     ) {
         this.jobRepository = jobRepository;
         this.trackRepository = trackRepository;
         this.migrationAsyncProcessor = migrationAsyncProcessor;
+        this.applicationContext = applicationContext;
     }
 
     public MigrationJobResponse startMigration(String spotifyPlaylistUrl) {
@@ -48,8 +53,13 @@ public class MigrationService {
         job = jobRepository.saveAndFlush(job);
 
         UUID jobId = job.getId();
-        migrationAsyncProcessor.processMigration(jobId);
+        applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId);
         return MigrationJobResponse.from(job);
+    }
+
+    @Async("migrationTaskExecutor")
+    public void processMigrationAsync(UUID jobId) {
+        migrationAsyncProcessor.processMigration(jobId);
     }
 
     @Transactional(readOnly = true)

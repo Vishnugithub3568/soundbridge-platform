@@ -13,11 +13,14 @@ import com.soundbridge.repository.MigrationTrackRepository;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import org.springframework.scheduling.annotation.Async;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class MigrationAsyncProcessor {
+
+    private static final Logger log = LoggerFactory.getLogger(MigrationAsyncProcessor.class);
 
     private final MigrationJobRepository jobRepository;
     private final MigrationTrackRepository trackRepository;
@@ -36,12 +39,14 @@ public class MigrationAsyncProcessor {
         this.youTubeClient = youTubeClient;
     }
 
-    @Async("migrationTaskExecutor")
     public void processMigration(UUID jobId) {
         MigrationJob job = jobRepository.findById(jobId).orElse(null);
         if (job == null) {
             return;
         }
+
+        int matched = 0;
+        int failed = 0;
 
         try {
             job.setStatus(JobStatus.RUNNING);
@@ -55,9 +60,6 @@ public class MigrationAsyncProcessor {
             job.setMatchedTracks(0);
             job.setFailedTracks(0);
             jobRepository.saveAndFlush(job);
-
-            int matched = 0;
-            int failed = 0;
 
             for (SpotifyTrack sourceTrack : sourceTracks) {
                 if (sourceTrack == null) {
@@ -88,15 +90,16 @@ public class MigrationAsyncProcessor {
                     } else {
                         migrationTrack.setTargetTrackTitle(match.targetTrackTitle());
                         migrationTrack.setTargetThumbnailUrl(match.targetThumbnailUrl());
-                        migrationTrack.setMatchStatus(TrackMatchStatus.NOT_FOUND);
+                        migrationTrack.setMatchStatus(TrackMatchStatus.FAILED);
                         migrationTrack.setFailureReason(
-                            Objects.requireNonNullElse(match.failureReason(), "No reliable YouTube Music match")
+                            Objects.requireNonNullElse(match.failureReason(), "FAILED: no reliable YouTube Music match")
                         );
                         failed++;
                     }
                 } else {
-                    migrationTrack.setMatchStatus(TrackMatchStatus.NOT_FOUND);
-                    migrationTrack.setFailureReason("Matcher returned no response");
+                    migrationTrack.setMatchStatus(TrackMatchStatus.FAILED);
+                    migrationTrack.setConfidenceScore(0.0);
+                    migrationTrack.setFailureReason("FAILED: matcher returned no response");
                     failed++;
                 }
 
@@ -117,8 +120,15 @@ public class MigrationAsyncProcessor {
             job.setStatus(JobStatus.COMPLETED);
             jobRepository.saveAndFlush(job);
         } catch (Exception ex) {
+            int unresolved = Math.max(0, job.getTotalTracks() - matched - failed);
+            if (unresolved > 0) {
+                failed += unresolved;
+            }
+            job.setMatchedTracks(matched);
+            job.setFailedTracks(failed);
             job.setStatus(JobStatus.FAILED);
             jobRepository.saveAndFlush(job);
+            log.error("Migration job {} failed during processing", jobId, ex);
         }
     }
 }
