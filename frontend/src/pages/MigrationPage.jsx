@@ -12,6 +12,15 @@ import {
 
 const TERMINAL_STATUSES = new Set(['COMPLETED', 'FAILED']);
 
+function isFallbackReason(reason) {
+  const value = String(reason || '').trim();
+  return value.startsWith('SAFE_FALLBACK:') || value.startsWith('LOW_CONFIDENCE_FALLBACK:');
+}
+
+function isFailedReason(reason) {
+  return String(reason || '').trim().startsWith('FAILED:');
+}
+
 function MigrationPage() {
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [job, setJob] = useState(null);
@@ -37,6 +46,20 @@ function MigrationPage() {
     }
     return tracks.filter((track) => track.matchStatus === 'FAILED');
   }, [tracks, showFailedOnly]);
+
+  const reliabilityStats = useMemo(() => {
+    const fallbackUsed = tracks.filter((track) => isFallbackReason(track.failureReason)).length;
+    const hardFailures = tracks.filter((track) => track.matchStatus === 'FAILED' || isFailedReason(track.failureReason)).length;
+    const confidentMatches = tracks.filter(
+      (track) => track.matchStatus === 'MATCHED' && !isFallbackReason(track.failureReason)
+    ).length;
+
+    return {
+      fallbackUsed,
+      hardFailures,
+      confidentMatches
+    };
+  }, [tracks]);
 
   const refreshJobData = async (jobId) => {
     const [jobData, tracksData, reportData] = await Promise.all([
@@ -182,7 +205,13 @@ function MigrationPage() {
         </motion.section>
       ) : null}
 
-      <JobSummaryCard job={job} progressPercent={progressPercent} loading={loading} report={report} />
+      <JobSummaryCard
+        job={job}
+        progressPercent={progressPercent}
+        loading={loading}
+        report={report}
+        reliabilityStats={reliabilityStats}
+      />
 
       <motion.section
         className="rounded-2xl border border-clay bg-white/80 p-4 shadow-panel"

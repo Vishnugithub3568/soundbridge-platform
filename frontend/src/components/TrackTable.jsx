@@ -30,6 +30,36 @@ function getStatusColor(status) {
   }
 }
 
+function classifyReason(reason) {
+  const value = String(reason || '').trim();
+  if (!value) {
+    return { type: 'none', label: '' };
+  }
+
+  if (value.startsWith('SAFE_FALLBACK:')) {
+    return {
+      type: 'fallback',
+      label: value.replace('SAFE_FALLBACK:', '').trim() || 'Reliable fallback used'
+    };
+  }
+
+  if (value.startsWith('LOW_CONFIDENCE_FALLBACK:')) {
+    return {
+      type: 'fallback',
+      label: value.replace('LOW_CONFIDENCE_FALLBACK:', '').trim() || 'Low-confidence candidate accepted'
+    };
+  }
+
+  if (value.startsWith('FAILED:')) {
+    return {
+      type: 'error',
+      label: value.replace('FAILED:', '').trim() || value
+    };
+  }
+
+  return { type: 'info', label: value };
+}
+
 function ScoreVisualization({ score }) {
   if (!score) return <span className="text-gray-500">-</span>;
   
@@ -134,6 +164,7 @@ function TrackTable({ tracks }) {
             {sortedTracks.map((track) => {
               const thumbnail = getThumbnail(track);
               const statusColor = getStatusColor(track.matchStatus);
+              const reasonMeta = classifyReason(track.failureReason);
               return (
                 <tr key={track.id} className="border-b border-clay/70 align-top hover:bg-stone-50 transition">
                   <td className="py-3 pr-2 font-medium max-w-xs truncate">{track.sourceTrackName}</td>
@@ -185,8 +216,14 @@ function TrackTable({ tracks }) {
                     )}
                   </td>
                   <td className="py-3 pr-2 text-xs text-stone-600 max-w-xs">
-                    {track.failureReason ? (
-                      <span className="text-red-600 font-medium">{track.failureReason}</span>
+                    {reasonMeta.type === 'fallback' ? (
+                      <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-50 px-2 py-1 font-semibold text-sky-700">
+                        Reliable Fallback: {reasonMeta.label}
+                      </span>
+                    ) : reasonMeta.type === 'error' ? (
+                      <span className="font-medium text-red-600">{reasonMeta.label}</span>
+                    ) : reasonMeta.type === 'info' ? (
+                      <span className="font-medium text-stone-600">{reasonMeta.label}</span>
                     ) : (
                       <span className="text-emerald-600">✓ Matched</span>
                     )}

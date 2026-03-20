@@ -73,6 +73,7 @@ class MigrationApiIntegrationTest {
 
         mockMvc.perform(get("/migrate/{jobId}/report", jobId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.matchedTracks").value(1));
+            .andExpect(jsonPath("$.matchedTracks").value(2))
+            .andExpect(jsonPath("$.failedTracks").value(0));
     }
 }

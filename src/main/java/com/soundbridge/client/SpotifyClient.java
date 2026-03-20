@@ -1,13 +1,18 @@
 package com.soundbridge.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,12 +36,18 @@ public class SpotifyClient {
 
     private static final Logger log = LoggerFactory.getLogger(SpotifyClient.class);
     private static final long MAX_BACKOFF_MS = 5000L;
+    private static final Pattern INITIAL_STATE_PATTERN = Pattern.compile(
+        "<script id=\\\"initialState\\\" type=\\\"text/plain\\\">(.*?)</script>",
+        Pattern.DOTALL
+    );
 
     private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
     private final String clientId;
     private final String clientSecret;
     private final String apiBaseUrl;
     private final String accountsBaseUrl;
+    private final boolean safeFallbackEnabled;
     private final int retryMaxAttempts;
     private final long retryInitialBackoffMs;
 
@@ -49,14 +60,17 @@ public class SpotifyClient {
         @Value("${spotify.client-secret:}") String clientSecret,
         @Value("${spotify.api-base-url:https://api.spotify.com/v1}") String apiBaseUrl,
         @Value("${spotify.accounts-base-url:https://accounts.spotify.com}") String accountsBaseUrl,
+        @Value("${spotify.safe-fallback.enabled:false}") boolean safeFallbackEnabled,
         @Value("${api.retry.max-attempts:3}") int retryMaxAttempts,
         @Value("${api.retry.initial-backoff-ms:250}") long retryInitialBackoffMs
     ) {
         this.restTemplate = restTemplateBuilder.build();
+        this.objectMapper = new ObjectMapper();
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.apiBaseUrl = apiBaseUrl;
         this.accountsBaseUrl = accountsBaseUrl;
+        this.safeFallbackEnabled = safeFallbackEnabled;
         this.retryMaxAttempts = Math.max(1, retryMaxAttempts);
         this.retryInitialBackoffMs = Math.max(50L, retryInitialBackoffMs);
     }
@@ -104,12 +118,24 @@ public class SpotifyClient {
                 nextUrl = nextNode.isNull() ? null : nextNode.asText(null);
             }
         } catch (RuntimeException ex) {
-            if (!isSafeFallbackCandidate(ex)) {
+            if (!(safeFallbackEnabled && isSafeFallbackCandidate(ex))) {
+                if (isSafeFallbackCandidate(ex)) {
+                    List<SpotifyTrack> publicTracks = fetchPublicPlaylistTracks(playlistId);
+                    if (!publicTracks.isEmpty()) {
+                        log.warn(
+                            "Spotify API unavailable for playlistId={} (reason={}); extracted {} tracks from public page",
+                            playlistId,
+                            summarizeError(ex),
+                            publicTracks.size()
+                        );
+                        return publicTracks;
+                    }
+                }
                 throw ex;
             }
 
             log.warn(
-                "Spotify playlist fetch unavailable for playlistId={} (reason={}); using fallback demo tracks",
+                "Spotify playlist fetch unavailable for playlistId={} (reason={}); using configured fallback demo tracks",
                 playlistId,
                 summarizeError(ex)
             );
@@ -117,6 +143,109 @@ public class SpotifyClient {
         }
 
         return tracks;
+    }
+
+    private List<SpotifyTrack> fetchPublicPlaylistTracks(String playlistId) {
+        String playlistPageUrl = "https://open.spotify.com/playlist/" + playlistId;
+        try {
+            String html = restTemplate.getForObject(playlistPageUrl, String.class);
+            if (html == null || html.isBlank()) {
+                return List.of();
+            }
+
+            Matcher matcher = INITIAL_STATE_PATTERN.matcher(html);
+            if (!matcher.find()) {
+                return List.of();
+            }
+
+            String encodedState = matcher.group(1).trim();
+            if (encodedState.isBlank()) {
+                return List.of();
+            }
+
+            byte[] decoded;
+            try {
+                decoded = Base64.getDecoder().decode(encodedState);
+            } catch (IllegalArgumentException ex) {
+                decoded = Base64.getUrlDecoder().decode(encodedState);
+            }
+
+            JsonNode root = objectMapper.readTree(new String(decoded, StandardCharsets.UTF_8));
+            Set<String> seen = new LinkedHashSet<>();
+            List<SpotifyTrack> extracted = new ArrayList<>();
+            collectTracksFromNode(root, extracted, seen);
+            return extracted;
+        } catch (RuntimeException ex) {
+            log.warn("Public Spotify page fallback failed for playlistId={} reason={}", playlistId, summarizeError(ex));
+            return List.of();
+        } catch (Exception ex) {
+            log.warn("Public Spotify page fallback parse failed for playlistId={} reason={}", playlistId, ex.getMessage());
+            return List.of();
+        }
+    }
+
+    private void collectTracksFromNode(JsonNode node, List<SpotifyTrack> out, Set<String> seen) {
+        if (node == null || node.isNull()) {
+            return;
+        }
+
+        if (node.isObject()) {
+            String uri = node.path("uri").asText("");
+            String name = node.path("name").asText("");
+            String artist = extractArtistFromTrackNode(node);
+            Long durationMs = extractDurationFromTrackNode(node);
+
+            if (uri.startsWith("spotify:track:") && !name.isBlank() && !artist.isBlank()) {
+                String dedupeKey = uri + "|" + name + "|" + artist;
+                if (seen.add(dedupeKey)) {
+                    out.add(new SpotifyTrack(name, artist, null, durationMs));
+                }
+            }
+
+            node.fields().forEachRemaining(entry -> collectTracksFromNode(entry.getValue(), out, seen));
+            return;
+        }
+
+        if (node.isArray()) {
+            for (JsonNode child : node) {
+                collectTracksFromNode(child, out, seen);
+            }
+        }
+    }
+
+    private String extractArtistFromTrackNode(JsonNode trackNode) {
+        JsonNode artistItems = trackNode.path("artists").path("items");
+        if (artistItems.isArray() && !artistItems.isEmpty()) {
+            JsonNode first = artistItems.get(0);
+            String profileName = first.path("profile").path("name").asText("");
+            if (!profileName.isBlank()) {
+                return profileName;
+            }
+            String name = first.path("name").asText("");
+            if (!name.isBlank()) {
+                return name;
+            }
+        }
+
+        JsonNode artistsArray = trackNode.path("artists");
+        if (artistsArray.isArray() && !artistsArray.isEmpty()) {
+            String name = artistsArray.get(0).path("name").asText("");
+            if (!name.isBlank()) {
+                return name;
+            }
+        }
+
+        return "";
+    }
+
+    private Long extractDurationFromTrackNode(JsonNode trackNode) {
+        long totalMs = trackNode.path("duration").path("totalMilliseconds").asLong(0L);
+        if (totalMs > 0L) {
+            return totalMs;
+        }
+
+        long durationMs = trackNode.path("duration_ms").asLong(0L);
+        return durationMs > 0L ? durationMs : null;
     }
 
     private boolean isSafeFallbackCandidate(RuntimeException ex) {

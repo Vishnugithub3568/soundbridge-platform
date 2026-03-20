@@ -29,7 +29,7 @@ function Stat({ label, value }) {
   );
 }
 
-function JobSummaryCard({ job, progressPercent, loading, report }) {
+function JobSummaryCard({ job, progressPercent, loading, report, reliabilityStats }) {
   if (!job) {
     return null;
   }
@@ -67,10 +67,11 @@ function JobSummaryCard({ job, progressPercent, loading, report }) {
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-4">
+      <div className="mt-4 grid gap-3 md:grid-cols-5">
         <Stat label="Total" value={job.totalTracks} />
         <Stat label="Matched" value={job.matchedTracks} />
         <Stat label="Failed" value={job.failedTracks} />
+        <Stat label="Fallbacks" value={reliabilityStats?.fallbackUsed ?? 0} />
         <Stat label="Match Rate" value={report ? `${report.matchRate.toFixed(1)}%` : '-'} />
       </div>
     </motion.section>

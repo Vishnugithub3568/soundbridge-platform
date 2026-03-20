@@ -1,19 +1,17 @@
 # Multi-stage build for backend
-FROM eclipse-temurin:21-jdk-alpine AS builder
+FROM maven:3.9.9-eclipse-temurin-21 AS builder
 WORKDIR /app
-COPY pom.xml .
+
+COPY pom.xml ./
+RUN mvn -q -DskipTests dependency:go-offline
+
 COPY src ./src
-RUN microdnf install --nodocs git && \
-    ./mvnw clean package -DskipTests && \
-    microdnf remove git
+RUN mvn -q -DskipTests clean package
 
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre
 WORKDIR /app
-COPY --from=builder /app/target/*.jar app.jar
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost:9000/health || exit 1
+COPY --from=builder /app/target/*.jar /app/app.jar
 
 EXPOSE 9000
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar /app/app.jar"]

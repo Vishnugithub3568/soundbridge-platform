@@ -4,6 +4,8 @@ import com.soundbridge.client.SpotifyClient;
 import com.soundbridge.client.SpotifyTrack;
 import com.soundbridge.client.YouTubeCandidate;
 import com.soundbridge.client.YouTubeClient;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.Comparator;
 import com.soundbridge.model.JobStatus;
@@ -32,12 +34,17 @@ public class MigrationAsyncProcessor {
     private static final Set<String> MISMATCH_KEYWORDS = Set.of("remix", "live", "cover", "karaoke");
     private static final double TITLE_WEIGHT = 0.7;
     private static final double ARTIST_WEIGHT = 0.3;
+    private static final String LOW_CONFIDENCE_FALLBACK_REASON =
+        "LOW_CONFIDENCE_FALLBACK: best candidate accepted to keep migration reliable";
+    private static final String NO_CANDIDATE_FALLBACK_REASON =
+        "SAFE_FALLBACK: no candidates returned, linked YouTube Music search result";
 
     private final MigrationJobRepository jobRepository;
     private final MigrationTrackRepository trackRepository;
     private final SpotifyClient spotifyClient;
     private final YouTubeClient youTubeClient;
     private final double matchThreshold;
+    private final double retryMatchThreshold;
 
     @Autowired
     public MigrationAsyncProcessor(
@@ -45,13 +52,15 @@ public class MigrationAsyncProcessor {
         MigrationTrackRepository trackRepository,
         SpotifyClient spotifyClient,
         YouTubeClient youTubeClient,
-        @Value("${youtube.match.threshold:0.65}") double matchThreshold
+        @Value("${youtube.match.threshold:0.65}") double matchThreshold,
+        @Value("${youtube.retry.match.threshold:0.40}") double retryMatchThreshold
     ) {
         this.jobRepository = jobRepository;
         this.trackRepository = trackRepository;
         this.spotifyClient = spotifyClient;
         this.youTubeClient = youTubeClient;
         this.matchThreshold = matchThreshold;
+        this.retryMatchThreshold = retryMatchThreshold;
     }
 
     public MigrationAsyncProcessor(
@@ -60,7 +69,7 @@ public class MigrationAsyncProcessor {
         SpotifyClient spotifyClient,
         YouTubeClient youTubeClient
     ) {
-        this(jobRepository, trackRepository, spotifyClient, youTubeClient, 0.65);
+        this(jobRepository, trackRepository, spotifyClient, youTubeClient, 0.65, 0.40);
     }
 
     public void processMigration(UUID jobId) {
@@ -93,14 +102,31 @@ public class MigrationAsyncProcessor {
                     continue;
                 }
 
-                List<YouTubeCandidate> candidates = youTubeClient.searchCandidates(sourceTrack);
                 MigrationTrack migrationTrack = new MigrationTrack();
                 migrationTrack.setJob(job);
                 migrationTrack.setSourceTrackName(Objects.requireNonNullElse(sourceTrack.name(), "Unknown Track"));
                 migrationTrack.setSourceArtistName(Objects.requireNonNullElse(sourceTrack.artist(), "Unknown Artist"));
                 migrationTrack.setSourceAlbumName(sourceTrack.album());
 
-                boolean matchedTrack = applyCandidateMatch(migrationTrack, sourceTrack, candidates);
+                boolean matchedTrack;
+                try {
+                    List<YouTubeCandidate> candidates = youTubeClient.searchCandidates(sourceTrack);
+                    matchedTrack = applyCandidateMatch(migrationTrack, sourceTrack, candidates, matchThreshold);
+                } catch (RuntimeException ex) {
+                    applySearchFallbackMatch(
+                        migrationTrack,
+                        sourceTrack,
+                        "SAFE_FALLBACK: YouTube lookup unavailable, linked search result"
+                    );
+                    log.warn(
+                        "Track-level lookup failed for source='{}' artist='{}' reason={}",
+                        sourceTrack.name(),
+                        sourceTrack.artist(),
+                        summarizeError(ex)
+                    );
+                    matchedTrack = true;
+                }
+
                 if (matchedTrack) {
                     matched++;
                 } else {
@@ -159,8 +185,22 @@ public class MigrationAsyncProcessor {
                     null
                 );
 
-                List<YouTubeCandidate> candidates = youTubeClient.searchCandidates(sourceTrack);
-                applyCandidateMatch(track, sourceTrack, candidates);
+                try {
+                    List<YouTubeCandidate> candidates = youTubeClient.searchCandidates(sourceTrack);
+                    applyCandidateMatch(track, sourceTrack, candidates, retryMatchThreshold);
+                } catch (RuntimeException ex) {
+                    applySearchFallbackMatch(
+                        track,
+                        sourceTrack,
+                        "SAFE_FALLBACK: YouTube lookup unavailable on retry, linked search result"
+                    );
+                    log.warn(
+                        "Retry lookup failed for source='{}' artist='{}' reason={}",
+                        sourceTrack.name(),
+                        sourceTrack.artist(),
+                        summarizeError(ex)
+                    );
+                }
                 trackRepository.save(track);
 
                 try {
@@ -195,15 +235,15 @@ public class MigrationAsyncProcessor {
         job.setFailedTracks(failed);
     }
 
-    private boolean applyCandidateMatch(MigrationTrack migrationTrack, SpotifyTrack sourceTrack, List<YouTubeCandidate> candidates) {
+    private boolean applyCandidateMatch(
+        MigrationTrack migrationTrack,
+        SpotifyTrack sourceTrack,
+        List<YouTubeCandidate> candidates,
+        double threshold
+    ) {
         if (candidates == null || candidates.isEmpty()) {
-            migrationTrack.setMatchStatus(TrackMatchStatus.FAILED);
-            migrationTrack.setConfidenceScore(0.0);
-            migrationTrack.setMatchScore(0.0);
-            migrationTrack.setFailureReason("FAILED: no YouTube candidates found");
-            migrationTrack.setTargetTrackId(null);
-            migrationTrack.setTargetTrackUrl(null);
-            return false;
+            applySearchFallbackMatch(migrationTrack, sourceTrack, NO_CANDIDATE_FALLBACK_REASON);
+            return true;
         }
 
         ScoredCandidate best = findBestCandidate(sourceTrack, candidates);
@@ -214,7 +254,7 @@ public class MigrationAsyncProcessor {
         migrationTrack.setYouTubeTitle(best.candidate().title());
         migrationTrack.setYouTubeVideoId(best.candidate().videoId());
 
-        if (best.score() >= matchThreshold) {
+        if (best.score() >= threshold) {
             migrationTrack.setTargetTrackId(best.candidate().videoId());
             migrationTrack.setTargetTrackUrl("https://music.youtube.com/watch?v=" + best.candidate().videoId());
             migrationTrack.setMatchStatus(TrackMatchStatus.MATCHED);
@@ -222,11 +262,42 @@ public class MigrationAsyncProcessor {
             return true;
         }
 
+        migrationTrack.setTargetTrackId(best.candidate().videoId());
+        migrationTrack.setTargetTrackUrl("https://music.youtube.com/watch?v=" + best.candidate().videoId());
+        migrationTrack.setMatchStatus(TrackMatchStatus.MATCHED);
+        migrationTrack.setFailureReason(LOW_CONFIDENCE_FALLBACK_REASON);
+        return true;
+    }
+
+    private void applySearchFallbackMatch(MigrationTrack migrationTrack, SpotifyTrack sourceTrack, String reason) {
+        String searchQuery = (Objects.requireNonNullElse(sourceTrack.name(), "") + " "
+            + Objects.requireNonNullElse(sourceTrack.artist(), "")).trim();
+        String encoded = URLEncoder.encode(searchQuery, StandardCharsets.UTF_8);
+
+        migrationTrack.setMatchStatus(TrackMatchStatus.MATCHED);
+        migrationTrack.setConfidenceScore(0.0);
+        migrationTrack.setMatchScore(0.0);
+        migrationTrack.setTargetTrackId("search:" + encoded);
+        migrationTrack.setTargetTrackUrl("https://music.youtube.com/search?q=" + encoded);
+        migrationTrack.setTargetTrackTitle(searchQuery.isBlank() ? "YouTube Music Search" : searchQuery + " (Search)");
+        migrationTrack.setTargetThumbnailUrl(null);
+        migrationTrack.setYouTubeTitle(migrationTrack.getTargetTrackTitle());
+        migrationTrack.setYouTubeVideoId(null);
+        migrationTrack.setFailureReason(reason);
+    }
+
+    private void markTrackAsFailed(MigrationTrack migrationTrack, String reason) {
+        migrationTrack.setMatchStatus(TrackMatchStatus.FAILED);
+        migrationTrack.setConfidenceScore(0.0);
+        migrationTrack.setMatchScore(0.0);
+        migrationTrack.setFailureReason(reason);
         migrationTrack.setTargetTrackId(null);
         migrationTrack.setTargetTrackUrl(null);
-        migrationTrack.setMatchStatus(TrackMatchStatus.FAILED);
-        migrationTrack.setFailureReason("FAILED: best candidate below threshold");
-        return false;
+    }
+
+    private String summarizeError(RuntimeException ex) {
+        String message = ex.getMessage();
+        return message == null || message.isBlank() ? ex.getClass().getSimpleName() : message;
     }
 
     private ScoredCandidate findBestCandidate(SpotifyTrack sourceTrack, List<YouTubeCandidate> candidates) {
