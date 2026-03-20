@@ -155,7 +155,8 @@ public class MigrationAsyncProcessor {
                 SpotifyTrack sourceTrack = new SpotifyTrack(
                     Objects.requireNonNullElse(track.getSourceTrackName(), ""),
                     Objects.requireNonNullElse(track.getSourceArtistName(), ""),
-                    track.getSourceAlbumName()
+                    track.getSourceAlbumName(),
+                    null
                 );
 
                 List<YouTubeCandidate> candidates = youTubeClient.searchCandidates(sourceTrack);

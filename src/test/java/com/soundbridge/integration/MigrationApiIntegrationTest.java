@@ -10,8 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.soundbridge.client.SpotifyClient;
 import com.soundbridge.client.SpotifyTrack;
+import com.soundbridge.client.YouTubeCandidate;
 import com.soundbridge.client.YouTubeClient;
-import com.soundbridge.client.YouTubeMatch;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,19 +38,17 @@ class MigrationApiIntegrationTest {
     @Test
     void migrateFlowEndpointsReturnData() throws Exception {
         when(spotifyClient.fetchPlaylistTracks(any())).thenReturn(List.of(
-            new SpotifyTrack("Dreams", "Fleetwood Mac", "Rumours"),
-            new SpotifyTrack("Numb", "Linkin Park", "Meteora")
+            new SpotifyTrack("Dreams", "Fleetwood Mac", "Rumours", 257800L),
+            new SpotifyTrack("Numb", "Linkin Park", "Meteora", 185586L)
         ));
 
-        when(youTubeClient.matchTrack(any())).thenReturn(new YouTubeMatch(
-            true,
-            "abc123",
-            "https://music.youtube.com/watch?v=abc123",
-            "Dreams (Official Video)",
-            "https://img.youtube.com/vi/abc123/mqdefault.jpg",
-            0.9,
-            false,
-            null
+        when(youTubeClient.searchCandidates(any())).thenReturn(List.of(
+            new YouTubeCandidate(
+                "abc123",
+                "Dreams",
+                "Fleetwood Mac",
+                "https://img.youtube.com/vi/abc123/mqdefault.jpg"
+            )
         ));
 
         MvcResult createResult = mockMvc.perform(post("/migrate")
@@ -71,10 +69,10 @@ class MigrationApiIntegrationTest {
 
         mockMvc.perform(get("/migrate/{jobId}/tracks", jobId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$[0].targetTrackTitle").value("Dreams (Official Video)"));
+            .andExpect(jsonPath("$[0].targetTrackTitle").value("Dreams"));
 
         mockMvc.perform(get("/migrate/{jobId}/report", jobId))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.matchedTracks").value(2));
+            .andExpect(jsonPath("$.matchedTracks").value(1));
     }
 }

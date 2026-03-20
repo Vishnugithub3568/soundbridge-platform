@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.soundbridge.exception.MigrationException;
 import com.soundbridge.model.JobStatus;
 import com.soundbridge.model.MigrationJob;
 import com.soundbridge.repository.MigrationJobRepository;
@@ -18,7 +19,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationContext;
-import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class MigrationServiceTest {
@@ -61,6 +61,6 @@ class MigrationServiceTest {
 
     @Test
     void startMigrationRejectsBlankUrl() {
-        assertThrows(ResponseStatusException.class, () -> migrationService.startMigration("  "));
+        assertThrows(MigrationException.class, () -> migrationService.startMigration("  "));
     }
 }

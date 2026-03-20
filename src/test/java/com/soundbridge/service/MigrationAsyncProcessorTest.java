@@ -8,8 +8,8 @@ import static org.mockito.Mockito.when;
 
 import com.soundbridge.client.SpotifyClient;
 import com.soundbridge.client.SpotifyTrack;
+import com.soundbridge.client.YouTubeCandidate;
 import com.soundbridge.client.YouTubeClient;
-import com.soundbridge.client.YouTubeMatch;
 import com.soundbridge.model.JobStatus;
 import com.soundbridge.model.MigrationJob;
 import com.soundbridge.repository.MigrationJobRepository;
@@ -56,16 +56,14 @@ class MigrationAsyncProcessorTest {
         when(jobRepository.saveAndFlush(any(MigrationJob.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(trackRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        when(spotifyClient.fetchPlaylistTracks(any())).thenReturn(List.of(new SpotifyTrack("Dreams", "Fleetwood Mac", "Rumours")));
-        when(youTubeClient.matchTrack(any())).thenReturn(new YouTubeMatch(
-            true,
-            "abc123",
-            "https://music.youtube.com/watch?v=abc123",
-            "Dreams (Official Video)",
-            "https://img.youtube.com/vi/abc123/mqdefault.jpg",
-            0.91,
-            false,
-            null
+        when(spotifyClient.fetchPlaylistTracks(any())).thenReturn(List.of(new SpotifyTrack("Dreams", "Fleetwood Mac", "Rumours", 257800L)));
+        when(youTubeClient.searchCandidates(any())).thenReturn(List.of(
+            new YouTubeCandidate(
+                "abc123",
+                "Dreams",
+                "Fleetwood Mac",
+                "https://img.youtube.com/vi/abc123/mqdefault.jpg"
+            )
         ));
 
         processor.processMigration(jobId);
