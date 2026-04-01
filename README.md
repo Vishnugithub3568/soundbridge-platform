@@ -64,6 +64,7 @@ npm run build
   - `playlist-read-private`
   - `playlist-read-collaborative`
 - Configure frontend env with `VITE_SPOTIFY_CLIENT_ID`.
+- Configure frontend env with `VITE_SPOTIFY_REDIRECT_URI` that exactly matches Spotify app settings.
 - In the UI, use `Login with Spotify` to connect via Authorization Code + PKCE.
 - After login, the access token is forwarded automatically during migration requests.
 
@@ -77,6 +78,7 @@ npm run build
 4. Add environment variable in Vercel:
    - `VITE_API_URL=https://<your-backend-domain>`
    - `VITE_SPOTIFY_CLIENT_ID=<your-spotify-app-client-id>`
+   - `VITE_SPOTIFY_REDIRECT_URI=https://<your-vercel-app>.vercel.app`
 
 Backend must allow your Vercel origin through CORS:
 
