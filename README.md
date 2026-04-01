@@ -51,7 +51,6 @@ npm run build
 
 ## Deployment Notes
 
-- Container image build: `docker build -t soundbridge-platform:latest .`
 - Required secrets: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `YOUTUBE_API_KEY`
 - Reliability config:
 	- `SPOTIFY_SAFE_FALLBACK_ENABLED=false` (default)
