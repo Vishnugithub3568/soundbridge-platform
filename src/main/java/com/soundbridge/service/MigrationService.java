@@ -37,14 +37,17 @@ public class MigrationService {
         this.applicationContext = applicationContext;
     }
 
-    public MigrationJobResponse startMigration(String spotifyPlaylistUrl) {
+    public MigrationJobResponse startMigration(String spotifyPlaylistUrl, String spotifyAccessToken) {
         String normalizedUrl = Objects.requireNonNullElse(spotifyPlaylistUrl, "").trim();
         if (normalizedUrl.isEmpty()) {
             throw new MigrationException("Spotify playlist URL is required", "MISSING_PLAYLIST_URL", 400);
         }
 
+        String normalizedToken = Objects.requireNonNullElse(spotifyAccessToken, "").trim();
+
         MigrationJob job = new MigrationJob();
         job.setSourcePlaylistUrl(normalizedUrl);
+        job.setSpotifyAccessToken(normalizedToken.isEmpty() ? null : normalizedToken);
         job.setTargetPlatform("YOUTUBE_MUSIC");
         job.setStatus(JobStatus.QUEUED);
         job.setTotalTracks(0);

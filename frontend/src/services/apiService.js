@@ -4,8 +4,28 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:9000'
 });
 
-export async function startMigration(spotifyPlaylistUrl) {
-  const response = await api.post('/migrate', { spotifyPlaylistUrl });
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (!error?.response) {
+      const networkError = new Error(
+        'Cannot reach backend API. Start the backend on http://localhost:9000 or set VITE_API_URL to a reachable server.'
+      );
+      networkError.cause = error;
+      return Promise.reject(networkError);
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+export async function startMigration(spotifyPlaylistUrl, spotifyAccessToken) {
+  const payload = { spotifyPlaylistUrl };
+  if (spotifyAccessToken && spotifyAccessToken.trim()) {
+    payload.spotifyAccessToken = spotifyAccessToken.trim();
+  }
+
+  const response = await api.post('/migrate', payload);
   return response.data;
 }
 

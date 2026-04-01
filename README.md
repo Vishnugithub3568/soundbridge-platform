@@ -58,6 +58,16 @@ npm run build
 	- `YOUTUBE_MATCH_THRESHOLD=0.45`
 	- `YOUTUBE_RETRY_MATCH_THRESHOLD=0.40`
 
+## Private Spotify Playlists
+
+- Public playlists can migrate with backend app credentials (`SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`).
+- Private or collaborative playlists require a Spotify user access token with scopes:
+  - `playlist-read-private`
+  - `playlist-read-collaborative`
+- Configure frontend env with `VITE_SPOTIFY_CLIENT_ID`.
+- In the UI, use `Login with Spotify` to connect via Authorization Code + PKCE.
+- After login, the access token is forwarded automatically during migration requests.
+
 ## Vercel Frontend Deployment
 
 1. Import the repository in Vercel.
@@ -67,6 +77,7 @@ npm run build
    - Output directory: `dist`
 4. Add environment variable in Vercel:
    - `VITE_API_URL=https://<your-backend-domain>`
+   - `VITE_SPOTIFY_CLIENT_ID=<your-spotify-app-client-id>`
 
 Backend must allow your Vercel origin through CORS:
 

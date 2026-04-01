@@ -1,6 +1,7 @@
 create table if not exists migration_jobs (
     id uuid primary key,
     source_playlist_url varchar(2048) not null,
+    spotify_access_token varchar(4096),
     target_platform varchar(64) not null,
     status varchar(32) not null,
     total_tracks integer not null default 0,
@@ -35,6 +36,7 @@ alter table migration_tracks add column if not exists target_thumbnail_url varch
 alter table migration_tracks add column if not exists youtube_video_id varchar(512);
 alter table migration_tracks add column if not exists youtube_title varchar(1024);
 alter table migration_tracks add column if not exists match_score double precision;
+alter table migration_jobs add column if not exists spotify_access_token varchar(4096);
 
 create index if not exists idx_migration_tracks_job_id on migration_tracks(job_id);
 

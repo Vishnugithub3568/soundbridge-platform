@@ -11,6 +11,10 @@ import {
 } from '../services/apiService';
 
 const TERMINAL_STATUSES = new Set(['COMPLETED', 'FAILED']);
+const SPOTIFY_SCOPES = ['playlist-read-private', 'playlist-read-collaborative'];
+const SPOTIFY_PKCE_VERIFIER_KEY = 'spotify_pkce_verifier';
+const SPOTIFY_PKCE_STATE_KEY = 'spotify_pkce_state';
+const SPOTIFY_TOKEN_CACHE_KEY = 'spotify_oauth_token';
 
 function isFallbackReason(reason) {
   const value = String(reason || '').trim();
@@ -21,14 +25,75 @@ function isFailedReason(reason) {
   return String(reason || '').trim().startsWith('FAILED:');
 }
 
+function encodeBase64Url(bytes) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  let output = '';
+
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i];
+    const b = i + 1 < bytes.length ? bytes[i + 1] : 0;
+    const c = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    const chunk = (a << 16) | (b << 8) | c;
+
+    output += chars[(chunk >> 18) & 63];
+    output += chars[(chunk >> 12) & 63];
+    output += i + 1 < bytes.length ? chars[(chunk >> 6) & 63] : '';
+    output += i + 2 < bytes.length ? chars[chunk & 63] : '';
+  }
+
+  return output;
+}
+
+function randomString(length) {
+  const bytes = new Uint8Array(length);
+  window.crypto.getRandomValues(bytes);
+  return encodeBase64Url(bytes);
+}
+
+async function sha256(input) {
+  const encoder = new TextEncoder();
+  const buffer = await window.crypto.subtle.digest('SHA-256', encoder.encode(input));
+  return new Uint8Array(buffer);
+}
+
+function cacheSpotifyToken(token, expiresInSeconds) {
+  const expiresAt = Date.now() + Math.max(0, Number(expiresInSeconds || 0)) * 1000;
+  const payload = JSON.stringify({ token, expiresAt });
+  window.localStorage.setItem(SPOTIFY_TOKEN_CACHE_KEY, payload);
+}
+
+function readCachedSpotifyToken() {
+  try {
+    const raw = window.localStorage.getItem(SPOTIFY_TOKEN_CACHE_KEY);
+    if (!raw) {
+      return '';
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed?.token || !parsed?.expiresAt || parsed.expiresAt <= Date.now() + 60000) {
+      window.localStorage.removeItem(SPOTIFY_TOKEN_CACHE_KEY);
+      return '';
+    }
+
+    return parsed.token;
+  } catch {
+    window.localStorage.removeItem(SPOTIFY_TOKEN_CACHE_KEY);
+    return '';
+  }
+}
+
 function MigrationPage() {
   const [playlistUrl, setPlaylistUrl] = useState('');
+  const [spotifyAccessToken, setSpotifyAccessToken] = useState(() => readCachedSpotifyToken());
   const [job, setJob] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [spotifyAuthLoading, setSpotifyAuthLoading] = useState(false);
   const [error, setError] = useState('');
   const [showFailedOnly, setShowFailedOnly] = useState(false);
+  const spotifyClientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID ?? '';
+  const spotifyRedirectUri = `${window.location.origin}${window.location.pathname}`;
 
   const canSubmit = useMemo(() => playlistUrl.trim().length > 0 && !loading, [playlistUrl, loading]);
 
@@ -81,7 +146,7 @@ function MigrationPage() {
     setReport(null);
 
     try {
-      const createdJob = await startMigration(playlistUrl.trim());
+      const createdJob = await startMigration(playlistUrl.trim(), spotifyAccessToken);
       setJob(createdJob);
       await refreshJobData(createdJob.id);
     } catch (submitError) {
@@ -143,6 +208,121 @@ function MigrationPage() {
 
   const canRetryFailed = Boolean(job?.id) && !loading && (job?.failedTracks || 0) > 0;
 
+  const beginSpotifyLogin = async () => {
+    setError('');
+
+    if (!spotifyClientId.trim()) {
+      setError('Missing VITE_SPOTIFY_CLIENT_ID. Add it to frontend/.env or Vercel environment variables.');
+      return;
+    }
+
+    try {
+      setSpotifyAuthLoading(true);
+      const verifier = randomString(64);
+      const state = randomString(24);
+      const challenge = encodeBase64Url(await sha256(verifier));
+
+      window.sessionStorage.setItem(SPOTIFY_PKCE_VERIFIER_KEY, verifier);
+      window.sessionStorage.setItem(SPOTIFY_PKCE_STATE_KEY, state);
+
+      const authorizeUrl = new URL('https://accounts.spotify.com/authorize');
+      authorizeUrl.searchParams.set('response_type', 'code');
+      authorizeUrl.searchParams.set('client_id', spotifyClientId.trim());
+      authorizeUrl.searchParams.set('scope', SPOTIFY_SCOPES.join(' '));
+      authorizeUrl.searchParams.set('redirect_uri', spotifyRedirectUri);
+      authorizeUrl.searchParams.set('state', state);
+      authorizeUrl.searchParams.set('code_challenge_method', 'S256');
+      authorizeUrl.searchParams.set('code_challenge', challenge);
+
+      window.location.assign(authorizeUrl.toString());
+    } catch {
+      setSpotifyAuthLoading(false);
+      setError('Failed to start Spotify login. Please try again.');
+    }
+  };
+
+  const disconnectSpotify = () => {
+    setSpotifyAccessToken('');
+    window.localStorage.removeItem(SPOTIFY_TOKEN_CACHE_KEY);
+    window.sessionStorage.removeItem(SPOTIFY_PKCE_VERIFIER_KEY);
+    window.sessionStorage.removeItem(SPOTIFY_PKCE_STATE_KEY);
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    const authError = params.get('error');
+
+    if (!code && !authError) {
+      return;
+    }
+
+    const clearQueryParams = () => {
+      const nextUrl = `${window.location.pathname}${window.location.hash || ''}`;
+      window.history.replaceState({}, document.title, nextUrl);
+    };
+
+    if (authError) {
+      clearQueryParams();
+      setError(`Spotify login failed: ${authError}`);
+      setSpotifyAuthLoading(false);
+      return;
+    }
+
+    const storedVerifier = window.sessionStorage.getItem(SPOTIFY_PKCE_VERIFIER_KEY);
+    const storedState = window.sessionStorage.getItem(SPOTIFY_PKCE_STATE_KEY);
+
+    if (!storedVerifier || !storedState || storedState !== state) {
+      clearQueryParams();
+      setError('Spotify login failed: invalid OAuth state. Please try again.');
+      setSpotifyAuthLoading(false);
+      return;
+    }
+
+    const exchangeCode = async () => {
+      try {
+        setSpotifyAuthLoading(true);
+        const body = new URLSearchParams();
+        body.set('grant_type', 'authorization_code');
+        body.set('code', code);
+        body.set('redirect_uri', spotifyRedirectUri);
+        body.set('client_id', spotifyClientId.trim());
+        body.set('code_verifier', storedVerifier);
+
+        const response = await fetch('https://accounts.spotify.com/api/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body
+        });
+
+        if (!response.ok) {
+          throw new Error(`Spotify token exchange failed with status ${response.status}`);
+        }
+
+        const tokenPayload = await response.json();
+        if (!tokenPayload?.access_token) {
+          throw new Error('Spotify token exchange response did not include access_token');
+        }
+
+        setSpotifyAccessToken(tokenPayload.access_token);
+        cacheSpotifyToken(tokenPayload.access_token, tokenPayload.expires_in);
+        setError('');
+      } catch (exchangeError) {
+        setError(exchangeError.message || 'Failed to complete Spotify login.');
+      } finally {
+        window.sessionStorage.removeItem(SPOTIFY_PKCE_VERIFIER_KEY);
+        window.sessionStorage.removeItem(SPOTIFY_PKCE_STATE_KEY);
+        clearQueryParams();
+        setSpotifyAuthLoading(false);
+      }
+    };
+
+    exchangeCode();
+  }, [spotifyClientId, spotifyRedirectUri]);
+
   return (
     <main className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-8 md:px-6">
       <motion.header
@@ -185,6 +365,41 @@ function MigrationPage() {
           >
             {loading ? 'Migrating...' : 'Start Migration'}
           </button>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-clay bg-stone-50/70 p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-bold uppercase tracking-wide text-stone-600">Spotify Login</p>
+              <p className="mt-1 text-xs text-stone-500">
+                Use OAuth login for private playlists with scopes
+                {' '}<span className="font-semibold">playlist-read-private</span>
+                {' '}and{' '}<span className="font-semibold">playlist-read-collaborative</span>.
+              </p>
+              <p className="mt-2 text-xs font-semibold text-stone-700">
+                Status: {spotifyAccessToken ? 'Connected' : 'Not connected'}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={beginSpotifyLogin}
+                disabled={spotifyAuthLoading}
+                className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {spotifyAuthLoading ? 'Connecting...' : (spotifyAccessToken ? 'Reconnect Spotify' : 'Login with Spotify')}
+              </button>
+              {spotifyAccessToken ? (
+                <button
+                  type="button"
+                  onClick={disconnectSpotify}
+                  className="rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-100"
+                >
+                  Disconnect
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
 
         {loading ? (

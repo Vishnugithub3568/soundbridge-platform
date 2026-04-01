@@ -35,7 +35,10 @@ public class MigrationController {
 
     @PostMapping("/migrate")
     public ResponseEntity<MigrationJobResponse> migrate(@Valid @RequestBody CreateMigrationRequest request) {
-        MigrationJobResponse response = migrationService.startMigration(request.getSpotifyPlaylistUrl());
+        MigrationJobResponse response = migrationService.startMigration(
+            request.getSpotifyPlaylistUrl(),
+            request.getSpotifyAccessToken()
+        );
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
     }
 

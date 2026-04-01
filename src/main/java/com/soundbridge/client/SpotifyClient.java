@@ -76,7 +76,14 @@ public class SpotifyClient {
     }
 
     public List<SpotifyTrack> fetchPlaylistTracks(String playlistUrl) {
-        if (clientId == null || clientId.isBlank() || clientSecret == null || clientSecret.isBlank()) {
+        return fetchPlaylistTracks(playlistUrl, null);
+    }
+
+    public List<SpotifyTrack> fetchPlaylistTracks(String playlistUrl, String spotifyUserAccessToken) {
+        String normalizedUserToken = spotifyUserAccessToken == null ? "" : spotifyUserAccessToken.trim();
+        boolean hasUserToken = !normalizedUserToken.isEmpty();
+
+        if (!hasUserToken && (clientId == null || clientId.isBlank() || clientSecret == null || clientSecret.isBlank())) {
             throw new IllegalStateException("Spotify credentials are not configured");
         }
 
@@ -94,7 +101,7 @@ public class SpotifyClient {
 
         try {
             while (nextUrl != null && !nextUrl.isBlank()) {
-                JsonNode page = getAuthorizedJson(nextUrl);
+                JsonNode page = getAuthorizedJson(nextUrl, normalizedUserToken);
                 JsonNode items = page.path("items");
                 if (items.isArray()) {
                     for (JsonNode item : items) {
@@ -118,8 +125,15 @@ public class SpotifyClient {
                 nextUrl = nextNode.isNull() ? null : nextNode.asText(null);
             }
         } catch (RuntimeException ex) {
+            if (hasUserToken && isUnauthorized(ex)) {
+                throw new IllegalStateException(
+                    "Spotify access token cannot read this playlist. Use a valid user token with playlist-read-private and playlist-read-collaborative scopes.",
+                    ex
+                );
+            }
+
             if (!(safeFallbackEnabled && isSafeFallbackCandidate(ex))) {
-                if (isSafeFallbackCandidate(ex)) {
+                if (!hasUserToken && isSafeFallbackCandidate(ex)) {
                     List<SpotifyTrack> publicTracks = fetchPublicPlaylistTracks(playlistId);
                     if (!publicTracks.isEmpty()) {
                         log.warn(
@@ -257,6 +271,14 @@ public class SpotifyClient {
         return status == 403 || status == 429;
     }
 
+    private boolean isUnauthorized(RuntimeException ex) {
+        if (!(ex instanceof HttpStatusCodeException statusCodeException)) {
+            return false;
+        }
+        int status = statusCodeException.getStatusCode().value();
+        return status == 401 || status == 403;
+    }
+
     private List<SpotifyTrack> fallbackDemoTracks() {
         return List.of(
             new SpotifyTrack("Blinding Lights", "The Weeknd", "After Hours", 200040L),
@@ -269,10 +291,11 @@ public class SpotifyClient {
         );
     }
 
-    private JsonNode getAuthorizedJson(String url) {
+    private JsonNode getAuthorizedJson(String url, String spotifyUserAccessToken) {
         return executeWithRetry("spotify-playlist-tracks", () -> {
             HttpHeaders headers = new HttpHeaders();
-            headers.setBearerAuth(getAccessToken());
+            String userToken = spotifyUserAccessToken == null ? "" : spotifyUserAccessToken.trim();
+            headers.setBearerAuth(userToken.isEmpty() ? getAccessToken() : userToken);
             HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
 
             ResponseEntity<JsonNode> response = restTemplate.exchange(url, HttpMethod.GET, requestEntity, JsonNode.class);

@@ -22,6 +22,9 @@ public class MigrationJob {
     @Column(name = "source_playlist_url", nullable = false)
     private String sourcePlaylistUrl;
 
+    @Column(name = "spotify_access_token", length = 4096)
+    private String spotifyAccessToken;
+
     @Column(name = "target_platform", nullable = false)
     private String targetPlatform = "YOUTUBE_MUSIC";
 
@@ -79,6 +82,14 @@ public class MigrationJob {
 
     public void setSourcePlaylistUrl(String sourcePlaylistUrl) {
         this.sourcePlaylistUrl = sourcePlaylistUrl;
+    }
+
+    public String getSpotifyAccessToken() {
+        return spotifyAccessToken;
+    }
+
+    public void setSpotifyAccessToken(String spotifyAccessToken) {
+        this.spotifyAccessToken = spotifyAccessToken;
     }
 
     public String getTargetPlatform() {

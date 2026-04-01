@@ -85,7 +85,10 @@ public class MigrationAsyncProcessor {
             job.setStatus(JobStatus.RUNNING);
             jobRepository.saveAndFlush(job);
 
-            List<SpotifyTrack> sourceTracks = spotifyClient.fetchPlaylistTracks(job.getSourcePlaylistUrl());
+            List<SpotifyTrack> sourceTracks = spotifyClient.fetchPlaylistTracks(
+                job.getSourcePlaylistUrl(),
+                job.getSpotifyAccessToken()
+            );
             if (sourceTracks == null) {
                 sourceTracks = List.of();
             }
