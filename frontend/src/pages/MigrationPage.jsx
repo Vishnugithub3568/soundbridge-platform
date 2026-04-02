@@ -265,8 +265,8 @@ function MigrationPage() {
       const state = randomString(24);
       const challenge = encodeBase64Url(await sha256(verifier));
 
-      window.sessionStorage.setItem(SPOTIFY_PKCE_VERIFIER_KEY, verifier);
-      window.sessionStorage.setItem(SPOTIFY_PKCE_STATE_KEY, state);
+      window.localStorage.setItem(SPOTIFY_PKCE_VERIFIER_KEY, verifier);
+      window.localStorage.setItem(SPOTIFY_PKCE_STATE_KEY, state);
 
       const authorizeUrl = new URL('https://accounts.spotify.com/authorize');
       authorizeUrl.searchParams.set('response_type', 'code');
@@ -287,8 +287,8 @@ function MigrationPage() {
   const disconnectSpotify = () => {
     setSpotifyAccessToken('');
     window.localStorage.removeItem(SPOTIFY_TOKEN_CACHE_KEY);
-    window.sessionStorage.removeItem(SPOTIFY_PKCE_VERIFIER_KEY);
-    window.sessionStorage.removeItem(SPOTIFY_PKCE_STATE_KEY);
+    window.localStorage.removeItem(SPOTIFY_PKCE_VERIFIER_KEY);
+    window.localStorage.removeItem(SPOTIFY_PKCE_STATE_KEY);
   };
 
   const beginGoogleLogin = async () => {
@@ -305,8 +305,8 @@ function MigrationPage() {
       const state = randomString(24);
       const challenge = encodeBase64Url(await sha256(verifier));
 
-      window.sessionStorage.setItem(GOOGLE_PKCE_VERIFIER_KEY, verifier);
-      window.sessionStorage.setItem(GOOGLE_PKCE_STATE_KEY, state);
+      window.localStorage.setItem(GOOGLE_PKCE_VERIFIER_KEY, verifier);
+      window.localStorage.setItem(GOOGLE_PKCE_STATE_KEY, state);
 
       const authorizeUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       authorizeUrl.searchParams.set('response_type', 'code');
@@ -329,12 +329,12 @@ function MigrationPage() {
     setGoogleUser(null);
     window.localStorage.removeItem(GOOGLE_TOKEN_CACHE_KEY);
     window.localStorage.removeItem(GOOGLE_ID_TOKEN_CACHE_KEY);
-    window.sessionStorage.removeItem(GOOGLE_PKCE_VERIFIER_KEY);
-    window.sessionStorage.removeItem(GOOGLE_PKCE_STATE_KEY);
+    window.localStorage.removeItem(GOOGLE_PKCE_VERIFIER_KEY);
+    window.localStorage.removeItem(GOOGLE_PKCE_STATE_KEY);
   };
 
   useEffect(() => {
-    const hasPendingSpotifyAuth = Boolean(window.sessionStorage.getItem(SPOTIFY_PKCE_STATE_KEY));
+    const hasPendingSpotifyAuth = Boolean(window.localStorage.getItem(SPOTIFY_PKCE_STATE_KEY));
     if (!hasPendingSpotifyAuth) {
       return;
     }
@@ -360,8 +360,8 @@ function MigrationPage() {
       return;
     }
 
-    const storedVerifier = window.sessionStorage.getItem(SPOTIFY_PKCE_VERIFIER_KEY);
-    const storedState = window.sessionStorage.getItem(SPOTIFY_PKCE_STATE_KEY);
+    const storedVerifier = window.localStorage.getItem(SPOTIFY_PKCE_VERIFIER_KEY);
+    const storedState = window.localStorage.getItem(SPOTIFY_PKCE_STATE_KEY);
 
     if (!storedVerifier || !storedState || storedState !== state) {
       clearQueryParams();
@@ -403,8 +403,8 @@ function MigrationPage() {
       } catch (exchangeError) {
         setError(exchangeError.message || 'Failed to complete Spotify login.');
       } finally {
-        window.sessionStorage.removeItem(SPOTIFY_PKCE_VERIFIER_KEY);
-        window.sessionStorage.removeItem(SPOTIFY_PKCE_STATE_KEY);
+        window.localStorage.removeItem(SPOTIFY_PKCE_VERIFIER_KEY);
+        window.localStorage.removeItem(SPOTIFY_PKCE_STATE_KEY);
         clearQueryParams();
         setSpotifyAuthLoading(false);
       }
@@ -414,7 +414,7 @@ function MigrationPage() {
   }, [spotifyClientId, spotifyRedirectUri]);
 
   useEffect(() => {
-    const hasPendingGoogleAuth = Boolean(window.sessionStorage.getItem(GOOGLE_PKCE_STATE_KEY));
+    const hasPendingGoogleAuth = Boolean(window.localStorage.getItem(GOOGLE_PKCE_STATE_KEY));
     if (!hasPendingGoogleAuth) {
       return;
     }
@@ -440,8 +440,8 @@ function MigrationPage() {
       return;
     }
 
-    const storedVerifier = window.sessionStorage.getItem(GOOGLE_PKCE_VERIFIER_KEY);
-    const storedState = window.sessionStorage.getItem(GOOGLE_PKCE_STATE_KEY);
+    const storedVerifier = window.localStorage.getItem(GOOGLE_PKCE_VERIFIER_KEY);
+    const storedState = window.localStorage.getItem(GOOGLE_PKCE_STATE_KEY);
 
     if (!storedVerifier || !storedState || storedState !== state) {
       clearQueryParams();
@@ -501,8 +501,8 @@ function MigrationPage() {
       } catch (exchangeError) {
         setError(exchangeError.message || 'Failed to complete Google login.');
       } finally {
-        window.sessionStorage.removeItem(GOOGLE_PKCE_VERIFIER_KEY);
-        window.sessionStorage.removeItem(GOOGLE_PKCE_STATE_KEY);
+        window.localStorage.removeItem(GOOGLE_PKCE_VERIFIER_KEY);
+        window.localStorage.removeItem(GOOGLE_PKCE_STATE_KEY);
         clearQueryParams();
         setGoogleAuthLoading(false);
       }
