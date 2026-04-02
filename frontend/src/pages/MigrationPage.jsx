@@ -177,6 +177,7 @@ function MigrationPage() {
     setJob(jobData);
     setTracks(tracksData);
     setReport(reportData);
+    setError('');
     return jobData;
   };
 
