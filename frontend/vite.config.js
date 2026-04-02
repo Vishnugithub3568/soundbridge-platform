@@ -1,19 +1,14 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import fs from 'fs';
-import path from 'path';
-
-const certPath = path.join(process.env.TEMP || '/tmp', 'localhost.pfx');
+import basicSsl from '@vitejs/plugin-basic-ssl';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), basicSsl()],
   server: {
-    port: 5173,
-    host: '127.0.0.1',
-    https: {
-      pfx: certPath,
-      passphrase: 'password'
-    },
+    port: 5174,
+    strictPort: true,
+    host: 'localhost',
+    https: true,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:9000',
