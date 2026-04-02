@@ -83,13 +83,27 @@ public class SpotifyClient {
         String normalizedUserToken = spotifyUserAccessToken == null ? "" : spotifyUserAccessToken.trim();
         boolean hasUserToken = !normalizedUserToken.isEmpty();
 
-        if (!hasUserToken && (clientId == null || clientId.isBlank() || clientSecret == null || clientSecret.isBlank())) {
-            throw new IllegalStateException("Spotify credentials are not configured");
-        }
-
         String playlistId = extractPlaylistId(playlistUrl);
         if (playlistId == null || playlistId.isBlank()) {
             throw new IllegalArgumentException("Invalid Spotify playlist URL");
+        }
+
+        if (!hasUserToken && (clientId == null || clientId.isBlank() || clientSecret == null || clientSecret.isBlank())) {
+            List<SpotifyTrack> publicTracks = fetchPublicPlaylistTracks(playlistId);
+            if (!publicTracks.isEmpty()) {
+                log.warn(
+                    "Spotify credentials are not configured; extracted {} tracks from public page for playlistId={}",
+                    publicTracks.size(),
+                    playlistId
+                );
+                return publicTracks;
+            }
+
+            log.warn(
+                "Spotify credentials are not configured and public page extraction failed for playlistId={}; using fallback demo tracks",
+                playlistId
+            );
+            return fallbackDemoTracks();
         }
 
         List<SpotifyTrack> tracks = new ArrayList<>();
@@ -132,19 +146,27 @@ public class SpotifyClient {
                 );
             }
 
-            if (!(safeFallbackEnabled && isSafeFallbackCandidate(ex))) {
-                if (!hasUserToken && isSafeFallbackCandidate(ex)) {
-                    List<SpotifyTrack> publicTracks = fetchPublicPlaylistTracks(playlistId);
-                    if (!publicTracks.isEmpty()) {
-                        log.warn(
-                            "Spotify API unavailable for playlistId={} (reason={}); extracted {} tracks from public page",
-                            playlistId,
-                            summarizeError(ex),
-                            publicTracks.size()
-                        );
-                        return publicTracks;
-                    }
+            if (!hasUserToken) {
+                List<SpotifyTrack> publicTracks = fetchPublicPlaylistTracks(playlistId);
+                if (!publicTracks.isEmpty()) {
+                    log.warn(
+                        "Spotify API unavailable for playlistId={} (reason={}); extracted {} tracks from public page",
+                        playlistId,
+                        summarizeError(ex),
+                        publicTracks.size()
+                    );
+                    return publicTracks;
                 }
+
+                log.warn(
+                    "Spotify API and public page extraction unavailable for playlistId={} (reason={}); using fallback demo tracks",
+                    playlistId,
+                    summarizeError(ex)
+                );
+                return fallbackDemoTracks();
+            }
+
+            if (!(safeFallbackEnabled && isSafeFallbackCandidate(ex))) {
                 throw ex;
             }
 
