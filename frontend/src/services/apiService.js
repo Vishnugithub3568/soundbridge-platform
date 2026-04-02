@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:9000'
+  baseURL: import.meta.env.VITE_API_URL ?? '/api'
 });
 
 api.interceptors.response.use(
@@ -9,7 +9,7 @@ api.interceptors.response.use(
   (error) => {
     if (!error?.response) {
       const networkError = new Error(
-        'Cannot reach backend API. Start the backend on http://localhost:9000 or set VITE_API_URL to a reachable server.'
+        'Cannot reach backend API. Start the backend on http://localhost:9000 or configure VITE_API_URL to a reachable server.'
       );
       networkError.cause = error;
       return Promise.reject(networkError);

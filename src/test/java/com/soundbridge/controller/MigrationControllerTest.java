@@ -49,7 +49,7 @@ class MigrationControllerTest {
             Instant.now()
         );
 
-        when(migrationService.startMigration(anyString())).thenReturn(response);
+        when(migrationService.startMigration(anyString(), anyString())).thenReturn(response);
 
         mockMvc.perform(post("/migrate")
                 .contentType(MediaType.APPLICATION_JSON)
