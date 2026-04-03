@@ -11,6 +11,7 @@ import com.soundbridge.client.SpotifyClient;
 import com.soundbridge.client.SpotifyTrack;
 import com.soundbridge.client.YouTubeCandidate;
 import com.soundbridge.client.YouTubeClient;
+import com.soundbridge.client.YouTubeMusicClient;
 import com.soundbridge.model.JobStatus;
 import com.soundbridge.model.MigrationJob;
 import com.soundbridge.model.TrackMatchStatus;
@@ -43,11 +44,14 @@ class MigrationAsyncProcessorTest {
     @Mock
     private YouTubeClient youTubeClient;
 
+    @Mock
+    private YouTubeMusicClient youTubeMusicClient;
+
     private MigrationAsyncProcessor processor;
 
     @BeforeEach
     void setUp() {
-        processor = new MigrationAsyncProcessor(jobRepository, trackRepository, spotifyClient, youTubeClient);
+        processor = new MigrationAsyncProcessor(jobRepository, trackRepository, spotifyClient, youTubeClient, youTubeMusicClient);
     }
 
     @Test
