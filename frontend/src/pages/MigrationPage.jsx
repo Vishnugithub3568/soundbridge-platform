@@ -803,7 +803,7 @@ function MigrationPage() {
   );
 
   const dashboardSection = (
-    <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+    <div className="grid gap-7 xl:grid-cols-[1.2fr_0.8fr] xl:gap-8">
       <motion.section
         className="glass-card glass-card-hover p-5 md:p-7"
         initial={{ opacity: 0, y: 24 }}
@@ -889,7 +889,7 @@ function MigrationPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-5 lg:grid-cols-2">
             <div className="glass-card glass-card-hover p-5">
               <div className="flex flex-col gap-4">
                 <div>
@@ -959,7 +959,7 @@ function MigrationPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 md:flex-row md:items-center md:justify-between">
+          <div className="mt-1 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3 text-sm text-slate-300">
               <span className="animate-glow-pulse inline-flex h-3 w-3 rounded-full bg-cyan-400 shadow-[0_0_18px_rgba(34,211,238,0.5)]" />
               <span>Running async migration job in background.</span>
@@ -1034,7 +1034,11 @@ function MigrationPage() {
 
       {view === 'history' ? historySection : dashboardSection}
 
-      {view === 'dashboard' ? <TrackTable tracks={visibleTracks} /> : null}
+      {view === 'dashboard' ? (
+        <div className="mt-7">
+          <TrackTable tracks={visibleTracks} />
+        </div>
+      ) : null}
     </main>
   );
 }
