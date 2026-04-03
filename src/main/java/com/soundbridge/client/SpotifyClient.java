@@ -140,10 +140,12 @@ public class SpotifyClient {
             }
         } catch (RuntimeException ex) {
             if (hasUserToken && isUnauthorized(ex)) {
-                throw new IllegalStateException(
-                    "Spotify access token cannot read this playlist. Use a valid user token with playlist-read-private and playlist-read-collaborative scopes.",
-                    ex
+                log.warn(
+                    "Spotify user token rejected for playlistId={} (reason={}); retrying without user token",
+                    playlistId,
+                    summarizeError(ex)
                 );
+                return fetchPlaylistTracks(playlistUrl, null);
             }
 
             if (!hasUserToken) {

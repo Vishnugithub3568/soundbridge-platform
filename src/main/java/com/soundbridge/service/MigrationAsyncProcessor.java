@@ -157,6 +157,18 @@ public class MigrationAsyncProcessor {
             if (unresolved > 0) {
                 failed += unresolved;
             }
+
+            if (job.getTotalTracks() == 0 && failed == 0) {
+                MigrationTrack setupFailure = new MigrationTrack();
+                setupFailure.setJob(job);
+                setupFailure.setSourceTrackName("Migration Setup Failed");
+                setupFailure.setSourceArtistName("SoundBridge");
+                markTrackAsFailed(setupFailure, "FAILED: " + summarizeError(ex));
+                trackRepository.save(setupFailure);
+                job.setTotalTracks(1);
+                failed = 1;
+            }
+
             job.setMatchedTracks(matched);
             job.setFailedTracks(failed);
             job.setStatus(JobStatus.FAILED);
@@ -298,7 +310,7 @@ public class MigrationAsyncProcessor {
         migrationTrack.setTargetTrackUrl(null);
     }
 
-    private String summarizeError(RuntimeException ex) {
+    private String summarizeError(Exception ex) {
         String message = ex.getMessage();
         return message == null || message.isBlank() ? ex.getClass().getSimpleName() : message;
     }
