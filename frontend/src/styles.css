@@ -162,3 +162,43 @@ html[data-theme='light'] .input-dark::placeholder {
 html[data-theme='light'] .gradient-heading {
   background-image: linear-gradient(90deg, #0284c7, #7c3aed, #db2777);
 }
+
+html[data-theme='light'] .text-white,
+html[data-theme='light'] .text-slate-100,
+html[data-theme='light'] .text-slate-200,
+html[data-theme='light'] .text-slate-300 {
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .text-slate-400 {
+  color: #334155 !important;
+}
+
+html[data-theme='light'] .text-slate-500,
+html[data-theme='light'] .text-slate-600 {
+  color: #475569 !important;
+}
+
+html[data-theme='light'] .badge-status {
+  border-color: rgba(15, 23, 42, 0.2) !important;
+}
+
+html[data-theme='light'] .badge-neutral {
+  background: rgba(15, 23, 42, 0.08) !important;
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .badge-matched {
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: #065f46 !important;
+}
+
+html[data-theme='light'] .badge-partial {
+  background: rgba(245, 158, 11, 0.15) !important;
+  color: #92400e !important;
+}
+
+html[data-theme='light'] .badge-failed {
+  background: rgba(244, 63, 94, 0.14) !important;
+  color: #9f1239 !important;
+}
