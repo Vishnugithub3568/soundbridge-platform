@@ -180,6 +180,7 @@ function describeGoogleAuthError(authError) {
 
 function MigrationPage() {
   const [playlistUrl, setPlaylistUrl] = useState('');
+  const [direction, setDirection] = useState('SPOTIFY_TO_YOUTUBE');
   const [spotifyAccessToken, setSpotifyAccessToken] = useState(() => readCachedSpotifyToken());
   const [googleAccessToken, setGoogleAccessToken] = useState(() => readCachedGoogleToken().token);
   const [googleScope, setGoogleScope] = useState(() => readCachedGoogleToken().scope);
@@ -245,8 +246,21 @@ function MigrationPage() {
     event.preventDefault();
     setError('');
 
-    if (!googleAccessToken || !googleAccessToken.trim()) {
+    const isSpotifyToYouTube = direction === 'SPOTIFY_TO_YOUTUBE';
+    const isYouTubeToSpotify = direction === 'YOUTUBE_TO_SPOTIFY';
+
+    if (isSpotifyToYouTube && (!googleAccessToken || !googleAccessToken.trim())) {
       setError('Google login is required to export tracks into a YouTube Music playlist.');
+      return;
+    }
+
+    if (isYouTubeToSpotify && (!spotifyAccessToken || !spotifyAccessToken.trim())) {
+      setError('Spotify login is required to create a playlist and add tracks.');
+      return;
+    }
+
+    if (isYouTubeToSpotify && (!googleAccessToken || !googleAccessToken.trim())) {
+      setError('Google login is required to access YouTube Music playlists.');
       return;
     }
 
@@ -255,7 +269,7 @@ function MigrationPage() {
     setReport(null);
 
     try {
-      const createdJob = await startMigration(playlistUrl.trim(), spotifyAccessToken, googleAccessToken);
+      const createdJob = await startMigration(playlistUrl.trim(), spotifyAccessToken, googleAccessToken, direction);
       setJob(createdJob);
       await refreshJobData(createdJob.id);
     } catch (submitError) {
@@ -607,8 +621,38 @@ function MigrationPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, delay: 0.05 }}
       >
+        <div className="mb-4 flex flex-col gap-2">
+          <label className="block text-sm font-bold uppercase tracking-wide text-stone-600">
+            Migration Direction
+          </label>
+          <div className="flex gap-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="direction"
+                value="SPOTIFY_TO_YOUTUBE"
+                checked={direction === 'SPOTIFY_TO_YOUTUBE'}
+                onChange={(e) => setDirection(e.target.value)}
+                className="h-4 w-4 text-mint focus:ring-mint"
+              />
+              <span className="text-sm text-stone-700">Spotify → YouTube Music</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="direction"
+                value="YOUTUBE_TO_SPOTIFY"
+                checked={direction === 'YOUTUBE_TO_SPOTIFY'}
+                onChange={(e) => setDirection(e.target.value)}
+                className="h-4 w-4 text-mint focus:ring-mint"
+              />
+              <span className="text-sm text-stone-700">YouTube Music → Spotify</span>
+            </label>
+          </div>
+        </div>
+
         <label htmlFor="playlistUrl" className="block text-sm font-bold uppercase tracking-wide text-stone-600">
-          Spotify Playlist URL
+          {direction === 'SPOTIFY_TO_YOUTUBE' ? 'Spotify' : 'YouTube Music'} Playlist URL
         </label>
         <div className="mt-3 flex flex-col gap-3 md:flex-row">
           <input
@@ -616,7 +660,9 @@ function MigrationPage() {
             name="playlistUrl"
             value={playlistUrl}
             onChange={(event) => setPlaylistUrl(event.target.value)}
-            placeholder="https://open.spotify.com/playlist/..."
+            placeholder={direction === 'SPOTIFY_TO_YOUTUBE' 
+              ? 'https://open.spotify.com/playlist/...' 
+              : 'https://music.youtube.com/playlist?list=...'}
             className="w-full rounded-xl border border-clay bg-white px-4 py-3 font-mono text-sm focus:border-mint focus:outline-none"
             required
           />

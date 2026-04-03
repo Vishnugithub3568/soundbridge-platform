@@ -1,5 +1,6 @@
 package com.soundbridge.service;
 
+import com.soundbridge.dto.CreateMigrationRequest;
 import com.soundbridge.dto.MigrationJobResponse;
 import com.soundbridge.dto.MigrationReportResponse;
 import com.soundbridge.dto.MigrationTrackResponse;
@@ -38,6 +39,86 @@ public class MigrationService {
         this.migrationAsyncProcessor = migrationAsyncProcessor;
         this.applicationContext = applicationContext;
         this.googleOAuthService = googleOAuthService;
+    }
+
+    public MigrationJobResponse startMigration(CreateMigrationRequest request) {
+        if (request == null) {
+            throw new MigrationException("Migration request is required", "MISSING_REQUEST", 400);
+        }
+
+        if (request.isSpotifyToYouTube()) {
+            return startSpotifyToYouTubeMigration(request);
+        } else if (request.isYouTubeToSpotify()) {
+            return startYouTubeToSpotifyMigration(request);
+        } else {
+            throw new MigrationException("Invalid migration direction", "INVALID_DIRECTION", 400);
+        }
+    }
+
+    private MigrationJobResponse startSpotifyToYouTubeMigration(CreateMigrationRequest request) {
+        String spotifyPlaylistUrl = Objects.requireNonNullElse(request.getSourcePlaylistUrl(), "").trim();
+        if (spotifyPlaylistUrl.isEmpty()) {
+            throw new MigrationException("Spotify playlist URL is required", "MISSING_PLAYLIST_URL", 400);
+        }
+
+        String spotifyAccessToken = Objects.requireNonNullElse(request.getSpotifyAccessToken(), "").trim();
+        String googleAccessToken = Objects.requireNonNullElse(request.getGoogleAccessToken(), "").trim();
+
+        if (!googleAccessToken.isEmpty() && !googleOAuthService.hasYouTubeWriteScope(googleAccessToken)) {
+            throw new MigrationException(
+                "Google token is missing YouTube permission. Reconnect Google and approve YouTube access, then retry.",
+                "MISSING_YOUTUBE_SCOPE",
+                400
+            );
+        }
+
+        MigrationJob job = new MigrationJob();
+        job.setSourcePlaylistUrl(spotifyPlaylistUrl);
+        job.setSpotifyAccessToken(spotifyAccessToken.isEmpty() ? null : spotifyAccessToken);
+        job.setGoogleAccessToken(googleAccessToken.isEmpty() ? null : googleAccessToken);
+        job.setTargetPlatform("YOUTUBE_MUSIC");
+        job.setStatus(JobStatus.QUEUED);
+        job.setTotalTracks(0);
+        job.setMatchedTracks(0);
+        job.setFailedTracks(0);
+        job = jobRepository.saveAndFlush(job);
+
+        UUID jobId = job.getId();
+        applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId);
+        return MigrationJobResponse.from(job);
+    }
+
+    private MigrationJobResponse startYouTubeToSpotifyMigration(CreateMigrationRequest request) {
+        String youtubePlaylistUrl = Objects.requireNonNullElse(request.getSourcePlaylistUrl(), "").trim();
+        if (youtubePlaylistUrl.isEmpty()) {
+            throw new MigrationException("YouTube Music playlist URL is required", "MISSING_PLAYLIST_URL", 400);
+        }
+
+        String googleAccessToken = Objects.requireNonNullElse(request.getGoogleAccessToken(), "").trim();
+        String spotifyAccessToken = Objects.requireNonNullElse(request.getSpotifyAccessToken(), "").trim();
+
+        if (googleAccessToken.isEmpty()) {
+            throw new MigrationException("Google access token is required for YouTube Music access", "MISSING_GOOGLE_TOKEN", 400);
+        }
+
+        if (spotifyAccessToken.isEmpty()) {
+            throw new MigrationException("Spotify access token is required to create playlists", "MISSING_SPOTIFY_TOKEN", 400);
+        }
+
+        MigrationJob job = new MigrationJob();
+        job.setSourcePlaylistUrl(youtubePlaylistUrl);
+        job.setSpotifyAccessToken(spotifyAccessToken);
+        job.setGoogleAccessToken(googleAccessToken);
+        job.setTargetPlatform("SPOTIFY");
+        job.setStatus(JobStatus.QUEUED);
+        job.setTotalTracks(0);
+        job.setMatchedTracks(0);
+        job.setFailedTracks(0);
+        job = jobRepository.saveAndFlush(job);
+
+        UUID jobId = job.getId();
+        applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId);
+        return MigrationJobResponse.from(job);
     }
 
     public MigrationJobResponse startMigration(String spotifyPlaylistUrl, String spotifyAccessToken, String googleAccessToken) {

@@ -47,8 +47,11 @@ api.interceptors.response.use(
   }
 );
 
-export async function startMigration(spotifyPlaylistUrl, spotifyAccessToken, googleAccessToken) {
-  const payload = { spotifyPlaylistUrl };
+export async function startMigration(sourcePlaylistUrl, spotifyAccessToken, googleAccessToken, direction = 'SPOTIFY_TO_YOUTUBE') {
+  const payload = {
+    sourcePlaylistUrl,
+    direction
+  };
   if (spotifyAccessToken && spotifyAccessToken.trim()) {
     payload.spotifyAccessToken = spotifyAccessToken.trim();
   }
