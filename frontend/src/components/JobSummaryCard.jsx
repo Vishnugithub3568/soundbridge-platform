@@ -3,13 +3,13 @@ import { motion } from 'framer-motion';
 function statusClass(statusLabel) {
   switch (statusLabel) {
     case 'COMPLETED':
-      return 'status-completed';
+      return 'badge-matched';
     case 'FAILED':
-      return 'status-failed';
+      return 'badge-failed';
     case 'RUNNING':
-      return 'status-running';
+      return 'badge-neutral';
     default:
-      return 'status-started';
+      return 'badge-partial';
   }
 }
 
@@ -22,9 +22,9 @@ function displayStatus(status) {
 
 function Stat({ label, value }) {
   return (
-    <div className="rounded-xl border border-clay bg-white/80 p-3">
-      <p className="text-xs uppercase tracking-wide text-stone-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold">{value}</p>
+    <div className="stat-card">
+      <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">{label}</p>
+      <p className="mt-2 text-2xl font-black text-white">{value}</p>
     </div>
   );
 }
@@ -38,42 +38,56 @@ function JobSummaryCard({ job, progressPercent, loading, report, reliabilityStat
 
   return (
     <motion.section
-      className="rounded-2xl border border-clay bg-gradient-to-br from-amber-50 to-orange-50 p-5 shadow-panel"
+      className="glass-card glass-card-hover p-5 md:p-6"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">Migration Job</h2>
-          <p className="mt-1 break-all font-mono text-xs text-stone-600">{job.sourcePlaylistUrl}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Migration Job</p>
+          <h2 className="mt-2 text-2xl font-black tracking-tight text-white md:text-3xl">Track migration in progress</h2>
+          <p className="mt-2 break-all font-mono text-xs text-slate-300/80">{job.sourcePlaylistUrl}</p>
         </div>
-        <span className={`status-chip ${statusClass(statusLabel)}`}>{statusLabel}</span>
+        <motion.span
+          className={`badge-status ${statusClass(statusLabel)}`}
+          animate={statusLabel === 'RUNNING' ? { opacity: [0.72, 1, 0.72] } : { opacity: 1 }}
+          transition={statusLabel === 'RUNNING' ? { duration: 1.4, repeat: Infinity } : {}}
+        >
+          {statusLabel}
+        </motion.span>
       </div>
 
       <div className="mt-4">
-        <div className="mb-2 flex items-center justify-between text-sm text-stone-600">
+        <div className="mb-2 flex items-center justify-between text-sm text-slate-300">
           <span>Migration Progress</span>
-          <span className="font-semibold text-stone-900">{progressPercent}%</span>
+          <span className="font-semibold text-white">{progressPercent}%</span>
         </div>
-        <div className="relative h-3 overflow-hidden rounded-full bg-stone-200">
+        <div className="relative h-3 overflow-hidden rounded-full bg-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <motion.div
-            className="h-full rounded-full bg-gradient-to-r from-mint to-emerald-400"
+            className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-sky-500 to-fuchsia-500 shadow-[0_0_24px_rgba(56,189,248,0.45)]"
             initial={{ width: 0 }}
             animate={{ width: `${progressPercent}%` }}
             transition={{ duration: 0.5 }}
           />
-          {loading ? <div className="absolute inset-0 w-1/3 animate-shimmer bg-white/30" /> : null}
+          {loading ? <div className="absolute inset-0 w-1/3 animate-shimmer bg-white/20" /> : null}
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-5">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Stat label="Total" value={job.totalTracks} />
         <Stat label="Matched" value={job.matchedTracks} />
         <Stat label="Failed" value={job.failedTracks} />
         <Stat label="Fallbacks" value={reliabilityStats?.fallbackUsed ?? 0} />
         <Stat label="Match Rate" value={report ? `${report.matchRate.toFixed(1)}%` : '-'} />
       </div>
+
+      {loading ? (
+        <div className="mt-4 flex items-center gap-3 rounded-2xl border border-cyan-300/10 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
+          <span className="pulse-dot animate-glow-pulse" />
+          <span>Processing tracks with glowing async updates.</span>
+        </div>
+      ) : null}
     </motion.section>
   );
 }

@@ -18,15 +18,15 @@ function getVideoId(track) {
 function getStatusColor(status) {
   switch (status) {
     case 'MATCHED':
-      return 'bg-emerald-100 text-emerald-700 border-emerald-300';
+      return 'badge-matched';
     case 'PARTIAL':
-      return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+      return 'badge-partial';
     case 'NOT_FOUND':
-      return 'bg-stone-100 text-stone-700 border-stone-300';
+      return 'badge-neutral';
     case 'FAILED':
-      return 'bg-red-100 text-red-700 border-red-300';
+      return 'badge-failed';
     default:
-      return 'bg-stone-100 text-stone-700 border-stone-300';
+      return 'badge-neutral';
   }
 }
 
@@ -68,20 +68,20 @@ function classifyReason(reason) {
 }
 
 function ScoreVisualization({ score }) {
-  if (!score) return <span className="text-gray-500">-</span>;
+  if (!score) return <span className="text-slate-500">-</span>;
   
   const percentage = Math.round(score * 100);
   const isGood = percentage >= 65;
   
   return (
     <div className="flex items-center gap-2">
-      <div className="w-16 overflow-hidden rounded-full bg-stone-200 h-2">
+      <div className="h-2 w-20 overflow-hidden rounded-full bg-white/10">
         <div 
-          className={`h-full transition-all ${isGood ? 'bg-emerald-500' : 'bg-amber-500'}`}
+          className={`h-full transition-all ${isGood ? 'bg-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.45)]' : 'bg-amber-400 shadow-[0_0_18px_rgba(251,191,36,0.45)]'}`}
           style={{ width: `${percentage}%` }}
         />
       </div>
-      <span className={`text-xs font-bold ${isGood ? 'text-emerald-600' : 'text-amber-600'}`}>
+      <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${isGood ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'}`}>
         {percentage}%
       </span>
     </div>
@@ -141,24 +141,27 @@ function TrackTable({ tracks }) {
 
   if (!tracks?.length) {
     return (
-      <section className="rounded-2xl border border-clay bg-white/80 p-5 shadow-panel">
-        <h2 className="text-xl font-bold">Tracks</h2>
-        <p className="mt-2 text-sm text-stone-600">No tracks processed yet.</p>
+      <section className="glass-card glass-card-hover p-5">
+        <h2 className="text-xl font-black text-white">Tracks</h2>
+        <p className="mt-2 text-sm text-slate-300">No tracks processed yet. Start a migration to see results here.</p>
       </section>
     );
   }
 
   return (
-    <section className="rounded-2xl border border-clay bg-white/80 p-5 shadow-panel">
+    <section className="glass-card glass-card-hover p-5 md:p-6">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-xl font-bold">Track Mapping</h2>
-        <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">{tracks.length} tracks shown</p>
+        <div>
+          <h2 className="text-xl font-black text-white md:text-2xl">Track Mapping</h2>
+          <p className="mt-1 text-sm text-slate-400">Glowing match cards, preview support, and score badges.</p>
+        </div>
+        <p className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-slate-300">{tracks.length} tracks shown</p>
       </div>
 
       <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[950px] border-collapse text-sm">
+        <table className="w-full min-w-[980px] border-collapse text-sm text-slate-200">
           <thead>
-            <tr className="border-b border-clay text-left text-xs uppercase tracking-wide text-stone-500 bg-stone-50">
+            <tr className="border-b border-white/10 text-left text-xs uppercase tracking-[0.2em] text-slate-400">
               <SortableHeader label="Source Track" sortKey="sourceTrackName" />
               <SortableHeader label="Artist" sortKey="sourceArtistName" />
               <SortableHeader label="Status" sortKey="matchStatus" />
@@ -173,70 +176,70 @@ function TrackTable({ tracks }) {
               const statusColor = getStatusColor(track.matchStatus);
               const reasonMeta = classifyReason(track.failureReason);
               return (
-                <tr key={track.id} className="border-b border-clay/70 align-top hover:bg-stone-50 transition">
-                  <td className="py-3 pr-2 font-medium max-w-xs truncate">{track.sourceTrackName}</td>
-                  <td className="py-3 pr-2 text-stone-600 max-w-xs truncate">{track.sourceArtistName}</td>
+                <tr key={track.id} className="border-b border-white/5 align-top transition hover:bg-white/5">
+                  <td className="py-4 pr-2 font-semibold max-w-xs truncate text-white">{track.sourceTrackName}</td>
+                  <td className="py-4 pr-2 max-w-xs truncate text-slate-400">{track.sourceArtistName}</td>
                   <td className="py-3 pr-2">
-                    <span className={`rounded-full border ${statusColor} px-2 py-1 text-xs font-semibold inline-block`}>
+                    <span className={`badge-status ${statusColor}`}>
                       {track.matchStatus}
                     </span>
                   </td>
-                  <td className="py-3 pr-2">
+                  <td className="py-4 pr-2">
                     <ScoreVisualization score={track.matchScore || track.confidenceScore} />
                   </td>
-                  <td className="py-3 pr-2">
+                  <td className="py-4 pr-2">
                     {track.targetTrackUrl ? (
-                      <div className="flex items-start gap-2">
+                      <div className="flex items-start gap-3">
                         {thumbnail ? (
                           <button
                             type="button"
                             onClick={() => setPreviewTrack(track)}
-                            className="group relative overflow-hidden rounded-md border border-clay flex-shrink-0"
+                            className="group relative flex-shrink-0 overflow-hidden rounded-2xl border border-white/10"
                             title="Preview video"
                           >
                             <img
                               src={thumbnail}
                               alt={track.targetTrackTitle || 'YouTube thumbnail'}
-                              className="h-14 w-24 object-cover transition duration-200 group-hover:brightness-90"
+                              className="h-14 w-24 object-cover transition duration-300 group-hover:scale-105 group-hover:brightness-90"
                             />
-                            <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-xs font-bold text-white opacity-0 transition group-hover:opacity-100">
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-xs font-bold text-white opacity-0 transition group-hover:opacity-100">
                               ▶
                             </span>
                           </button>
                         ) : null}
                         <div className="space-y-1">
-                          <p className="max-w-[220px] text-xs font-semibold text-stone-700 line-clamp-2">
+                          <p className="max-w-[220px] text-xs font-semibold text-white line-clamp-2">
                             {track.youtubeTitle || track.targetTrackTitle || 'Matched track'}
                           </p>
                           <a
                             href={track.targetTrackUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-xs font-bold text-mint underline-offset-2 hover:underline inline-block"
+                            className="inline-block text-xs font-bold text-cyan-300 underline-offset-4 transition hover:text-cyan-200 hover:underline"
                           >
-                            Open on YouTube Music →
+                            Open result →
                           </a>
                         </div>
                       </div>
                     ) : (
-                      <span className="text-stone-400 text-xs">No match found</span>
+                      <span className="text-xs text-slate-500">No match found</span>
                     )}
                   </td>
-                  <td className="py-3 pr-2 text-xs text-stone-600 max-w-xs">
+                  <td className="py-4 pr-2 text-xs max-w-xs text-slate-300">
                     {reasonMeta.type === 'fallback' ? (
-                      <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-50 px-2 py-1 font-semibold text-sky-700">
+                      <span className="inline-flex items-center rounded-full border border-sky-400/20 bg-sky-400/10 px-2 py-1 font-semibold text-sky-200">
                         Reliable Fallback: {reasonMeta.label}
                       </span>
                     ) : reasonMeta.type === 'warning' ? (
-                      <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-1 font-semibold text-amber-700">
+                      <span className="inline-flex items-center rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-1 font-semibold text-amber-200">
                         Review Only: {reasonMeta.label}
                       </span>
                     ) : reasonMeta.type === 'error' ? (
-                      <span className="font-medium text-red-600">{reasonMeta.label}</span>
+                      <span className="font-medium text-rose-300">{reasonMeta.label}</span>
                     ) : reasonMeta.type === 'info' ? (
-                      <span className="font-medium text-stone-600">{reasonMeta.label}</span>
+                      <span className="font-medium text-slate-400">{reasonMeta.label}</span>
                     ) : (
-                      <span className="text-emerald-600">✓ Matched</span>
+                      <span className="text-emerald-300">✓ Matched</span>
                     )}
                   </td>
                 </tr>
@@ -247,19 +250,19 @@ function TrackTable({ tracks }) {
       </div>
 
       {previewVideoId ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4" onClick={() => setPreviewTrack(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xl" onClick={() => setPreviewTrack(null)}>
           <div
-            className="w-full max-w-3xl rounded-2xl border border-stone-700 bg-stone-950 p-3 shadow-2xl"
+            className="w-full max-w-3xl rounded-[28px] border border-white/10 bg-slate-950 p-3 shadow-[0_30px_120px_rgba(2,6,23,0.8)]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-2 flex items-center justify-between">
-              <p className="truncate pr-4 text-sm font-semibold text-stone-200">
+              <p className="truncate pr-4 text-sm font-semibold text-white">
                 {previewTrack?.youtubeTitle || previewTrack?.targetTrackTitle || 'YouTube Preview'}
               </p>
               <button
                 type="button"
                 onClick={() => setPreviewTrack(null)}
-                className="rounded-lg border border-stone-600 px-3 py-1 text-xs font-bold text-stone-200 hover:bg-stone-800"
+                className="glow-button-secondary px-3 py-1 text-xs"
               >
                 Close
               </button>

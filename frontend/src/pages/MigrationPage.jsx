@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
+import Navbar from '../components/Navbar';
 import JobSummaryCard from '../components/JobSummaryCard';
 import TrackTable from '../components/TrackTable';
 import {
@@ -30,6 +31,62 @@ const GOOGLE_TOKEN_CACHE_KEY = 'google_oauth_token';
 const GOOGLE_ID_TOKEN_CACHE_KEY = 'google_oauth_id_token';
 const GOOGLE_REQUIRED_SCOPE_MESSAGE =
   'Google token is missing YouTube permission. Reconnect Google and approve YouTube access.';
+const THEME_CACHE_KEY = 'soundbridge_theme';
+const JOB_HISTORY_CACHE_KEY = 'soundbridge_job_history';
+
+function readThemePreference() {
+  try {
+    const stored = window.localStorage.getItem(THEME_CACHE_KEY);
+    return stored === 'light' ? 'light' : 'dark';
+  } catch {
+    return 'dark';
+  }
+}
+
+function readJobHistory() {
+  try {
+    const stored = window.localStorage.getItem(JOB_HISTORY_CACHE_KEY);
+    if (!stored) {
+      return [];
+    }
+
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function formatHistoryDate(value) {
+  if (!value) {
+    return 'Just now';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Just now';
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(date);
+}
+
+function historyStatusClass(status) {
+  switch (status) {
+    case 'COMPLETED':
+      return 'badge-matched';
+    case 'FAILED':
+      return 'badge-failed';
+    case 'RUNNING':
+      return 'badge-neutral';
+    default:
+      return 'badge-partial';
+  }
+}
 
 function isFallbackReason(reason) {
   const value = String(reason || '').trim();
@@ -181,6 +238,8 @@ function describeGoogleAuthError(authError) {
 function MigrationPage() {
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [direction, setDirection] = useState('SPOTIFY_TO_YOUTUBE');
+  const [theme, setTheme] = useState(() => readThemePreference());
+  const [view, setView] = useState('dashboard');
   const [spotifyAccessToken, setSpotifyAccessToken] = useState(() => readCachedSpotifyToken());
   const [googleAccessToken, setGoogleAccessToken] = useState(() => readCachedGoogleToken().token);
   const [googleScope, setGoogleScope] = useState(() => readCachedGoogleToken().scope);
@@ -188,6 +247,7 @@ function MigrationPage() {
   const [job, setJob] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [report, setReport] = useState(null);
+  const [jobHistory, setJobHistory] = useState(() => readJobHistory());
   const [loading, setLoading] = useState(false);
   const [spotifyAuthLoading, setSpotifyAuthLoading] = useState(false);
   const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
@@ -229,6 +289,49 @@ function MigrationPage() {
     };
   }, [tracks]);
 
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    document.documentElement.dataset.theme = theme;
+    try {
+      window.localStorage.setItem(THEME_CACHE_KEY, theme);
+    } catch {
+      // ignore storage failures
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(JOB_HISTORY_CACHE_KEY, JSON.stringify(jobHistory.slice(0, 12)));
+    } catch {
+      // ignore storage failures
+    }
+  }, [jobHistory]);
+
+  const upsertHistoryEntry = (jobData, reportData, trackCount) => {
+    if (!jobData?.id) {
+      return;
+    }
+
+    const entry = {
+      id: jobData.id,
+      status: jobData.status,
+      direction,
+      sourcePlaylistUrl: jobData.sourcePlaylistUrl,
+      targetPlatform: jobData.targetPlatform,
+      targetPlaylistUrl: jobData.targetPlaylistUrl,
+      totalTracks: jobData.totalTracks ?? trackCount ?? 0,
+      matchedTracks: jobData.matchedTracks ?? 0,
+      failedTracks: jobData.failedTracks ?? 0,
+      matchRate: reportData?.matchRate ?? 0,
+      updatedAt: jobData.updatedAt || new Date().toISOString()
+    };
+
+    setJobHistory((currentHistory) => {
+      const nextHistory = [entry, ...currentHistory.filter((item) => item.id !== jobData.id)];
+      return nextHistory.slice(0, 12);
+    });
+  };
+
   const refreshJobData = async (jobId) => {
     const [jobData, tracksData, reportData] = await Promise.all([
       getMigrationJob(jobId),
@@ -239,6 +342,7 @@ function MigrationPage() {
     setTracks(tracksData);
     setReport(reportData);
     setError('');
+    upsertHistoryEntry(jobData, reportData, tracksData.length);
     return jobData;
   };
 
@@ -271,6 +375,7 @@ function MigrationPage() {
     try {
       const createdJob = await startMigration(playlistUrl.trim(), spotifyAccessToken, googleAccessToken, direction);
       setJob(createdJob);
+      upsertHistoryEntry(createdJob, null, 0);
       await refreshJobData(createdJob.id);
     } catch (submitError) {
       setError(submitError?.response?.data?.message || submitError.message || 'Failed to start migration');
@@ -339,6 +444,7 @@ function MigrationPage() {
     try {
       const queuedJob = await retryFailedTracks(job.id);
       setJob(queuedJob);
+      upsertHistoryEntry(queuedJob, report, tracks.length);
       await refreshJobData(job.id);
     } catch (retryError) {
       setError(retryError?.response?.data?.message || retryError.message || 'Failed to retry failed tracks');
@@ -599,163 +705,270 @@ function MigrationPage() {
     exchangeCode();
   }, [googleClientId, googleRedirectUri]);
 
-  return (
-    <main className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-8 md:px-6">
-      <motion.header
-        className="rounded-2xl border border-clay bg-white/80 p-6 shadow-panel"
+  const historySection = (
+    <motion.section
+      className="glass-card glass-card-hover p-5 md:p-6"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+    >
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Job History</p>
+          <h2 className="mt-2 text-2xl font-black text-white">Recent migrations</h2>
+          <p className="mt-1 text-sm text-slate-400">Stored locally so you can review recent runs without affecting the backend.</p>
+        </div>
+        <button type="button" onClick={() => setView('dashboard')} className="glow-button-secondary self-start">
+          Back to dashboard
+        </button>
+      </div>
+
+      <div className="mt-5 grid gap-4">
+        {jobHistory.length ? jobHistory.map((entry) => (
+          <article key={entry.id} className="history-row">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`badge-status ${historyStatusClass(entry.status)}`}>{entry.status}</span>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    {entry.direction === 'YOUTUBE_TO_SPOTIFY' ? 'YouTube Music → Spotify' : 'Spotify → YouTube Music'}
+                  </span>
+                </div>
+                <p className="mt-3 truncate font-mono text-xs text-slate-300">{entry.sourcePlaylistUrl}</p>
+                <div className="mt-3 flex flex-wrap gap-3 text-sm text-slate-400">
+                  <span>{entry.totalTracks} tracks</span>
+                  <span>{entry.matchedTracks} matched</span>
+                  <span>{entry.failedTracks} failed</span>
+                  <span>{entry.matchRate?.toFixed ? `${entry.matchRate.toFixed(1)}% match` : `${entry.matchRate}% match`}</span>
+                  <span>{formatHistoryDate(entry.updatedAt)}</span>
+                </div>
+              </div>
+              {entry.targetPlaylistUrl ? (
+                <a
+                  href={entry.targetPlaylistUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="glow-button-secondary inline-flex items-center justify-center"
+                >
+                  Open destination
+                </a>
+              ) : null}
+            </div>
+          </article>
+        )) : (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-slate-400">
+            No saved jobs yet. Run a migration from the dashboard to populate history.
+          </div>
+        )}
+      </div>
+    </motion.section>
+  );
+
+  const dashboardSection = (
+    <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <motion.section
+        className="glass-card glass-card-hover p-5 md:p-7"
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
       >
-        <h1 className="text-4xl font-bold tracking-tight md:text-6xl">SoundBridge</h1>
-        <p className="mt-2 max-w-3xl text-sm text-stone-600 md:text-base">
-          Production-style migration pipeline from Spotify playlists to YouTube Music with async job processing and
-          weighted match scoring.
-        </p>
-      </motion.header>
-
-      <motion.form
-        className="rounded-2xl border border-clay bg-white/80 p-5 shadow-panel"
-        onSubmit={handleSubmit}
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, delay: 0.05 }}
-      >
-        <div className="mb-4 flex flex-col gap-2">
-          <label className="block text-sm font-bold uppercase tracking-wide text-stone-600">
-            Migration Direction
-          </label>
-          <div className="flex gap-3">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="direction"
-                value="SPOTIFY_TO_YOUTUBE"
-                checked={direction === 'SPOTIFY_TO_YOUTUBE'}
-                onChange={(e) => setDirection(e.target.value)}
-                className="h-4 w-4 text-mint focus:ring-mint"
-              />
-              <span className="text-sm text-stone-700">Spotify → YouTube Music</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="direction"
-                value="YOUTUBE_TO_SPOTIFY"
-                checked={direction === 'YOUTUBE_TO_SPOTIFY'}
-                onChange={(e) => setDirection(e.target.value)}
-                className="h-4 w-4 text-mint focus:ring-mint"
-              />
-              <span className="text-sm text-stone-700">YouTube Music → Spotify</span>
-            </label>
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Playlist Migration</p>
+            <h1 className="mt-2 text-4xl font-black tracking-tight md:text-6xl">
+              <span className="gradient-heading">SoundBridge</span>
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm text-slate-300 md:text-base">
+              Modern SaaS dashboard for Spotify and YouTube Music migrations with async processing, scoring, and track review.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+            <div className="flex items-center gap-2">
+              <span className="pulse-dot animate-glow-pulse" />
+              <span>{loading ? 'Migration active' : 'Ready to migrate'}</span>
+            </div>
           </div>
         </div>
 
-        <label htmlFor="playlistUrl" className="block text-sm font-bold uppercase tracking-wide text-stone-600">
-          {direction === 'SPOTIFY_TO_YOUTUBE' ? 'Spotify' : 'YouTube Music'} Playlist URL
-        </label>
-        <div className="mt-3 flex flex-col gap-3 md:flex-row">
-          <input
-            id="playlistUrl"
-            name="playlistUrl"
-            value={playlistUrl}
-            onChange={(event) => setPlaylistUrl(event.target.value)}
-            placeholder={direction === 'SPOTIFY_TO_YOUTUBE' 
-              ? 'https://open.spotify.com/playlist/...' 
-              : 'https://music.youtube.com/playlist?list=...'}
-            className="w-full rounded-xl border border-clay bg-white px-4 py-3 font-mono text-sm focus:border-mint focus:outline-none"
-            required
-          />
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="rounded-xl bg-gradient-to-r from-mint to-emerald-500 px-6 py-3 font-bold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? 'Migrating...' : 'Start Migration'}
-          </button>
-        </div>
-
-        <div className="mt-4 rounded-xl border border-clay bg-stone-50/70 p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-bold uppercase tracking-wide text-stone-600">Spotify Login</p>
-              <p className="mt-1 text-xs text-stone-500">
-                Use OAuth login for private playlists with scopes
-                {' '}<span className="font-semibold">playlist-read-private</span>
-                {' '}and{' '}<span className="font-semibold">playlist-read-collaborative</span>.
-              </p>
-              <p className="mt-2 text-xs font-semibold text-stone-700">
-                Status: {spotifyAccessToken ? 'Connected' : 'Not connected'}
-              </p>
+        <form onSubmit={handleSubmit} className="grid gap-5">
+          <div className="glass-card bg-white/5 p-4">
+            <label className="block text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Migration Direction</label>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <label className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-4 transition ${direction === 'SPOTIFY_TO_YOUTUBE' ? 'border-cyan-300/30 bg-cyan-400/10 shadow-[0_0_28px_rgba(56,189,248,0.15)]' : 'border-white/10 bg-white/5 hover:bg-white/8'}`}>
+                <input
+                  type="radio"
+                  name="direction"
+                  value="SPOTIFY_TO_YOUTUBE"
+                  checked={direction === 'SPOTIFY_TO_YOUTUBE'}
+                  onChange={(event) => setDirection(event.target.value)}
+                  className="h-4 w-4 accent-cyan-400"
+                />
+                <div>
+                  <p className="font-semibold text-white">Spotify → YouTube Music</p>
+                  <p className="text-xs text-slate-400">Best for exporting Spotify playlists into YouTube Music.</p>
+                </div>
+              </label>
+              <label className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-4 transition ${direction === 'YOUTUBE_TO_SPOTIFY' ? 'border-fuchsia-300/30 bg-fuchsia-400/10 shadow-[0_0_28px_rgba(217,70,239,0.15)]' : 'border-white/10 bg-white/5 hover:bg-white/8'}`}>
+                <input
+                  type="radio"
+                  name="direction"
+                  value="YOUTUBE_TO_SPOTIFY"
+                  checked={direction === 'YOUTUBE_TO_SPOTIFY'}
+                  onChange={(event) => setDirection(event.target.value)}
+                  className="h-4 w-4 accent-fuchsia-400"
+                />
+                <div>
+                  <p className="font-semibold text-white">YouTube Music → Spotify</p>
+                  <p className="text-xs text-slate-400">Import a YouTube Music playlist into Spotify.</p>
+                </div>
+              </label>
             </div>
-            <div className="flex gap-2">
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+            <div>
+              <label htmlFor="playlistUrl" className="mb-2 block text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
+                {direction === 'SPOTIFY_TO_YOUTUBE' ? 'Spotify' : 'YouTube Music'} Playlist URL
+              </label>
+              <input
+                id="playlistUrl"
+                name="playlistUrl"
+                value={playlistUrl}
+                onChange={(event) => setPlaylistUrl(event.target.value)}
+                placeholder={
+                  direction === 'SPOTIFY_TO_YOUTUBE'
+                    ? 'https://open.spotify.com/playlist/...'
+                    : 'https://music.youtube.com/playlist?list=...'
+                }
+                className="input-dark font-mono"
+                required
+              />
+            </div>
+            <div className="flex items-end">
+              <button type="submit" disabled={!canSubmit} className="glow-button w-full md:w-auto">
+                {loading ? 'Migrating...' : 'Start Migration'}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="glass-card glass-card-hover p-5">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Spotify Login</p>
+                  <p className="mt-2 text-sm text-slate-300">
+                    OAuth login for private playlists using <span className="font-semibold text-white">playlist-read-private</span> and{' '}
+                    <span className="font-semibold text-white">playlist-read-collaborative</span>.
+                  </p>
+                  <p className="mt-3 text-sm text-slate-200">Status: {spotifyAccessToken ? 'Connected' : 'Not connected'}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={beginSpotifyLogin} disabled={spotifyAuthLoading} className="glow-button-secondary">
+                    {spotifyAuthLoading ? 'Connecting...' : spotifyAccessToken ? 'Reconnect Spotify' : 'Login with Spotify'}
+                  </button>
+                  {spotifyAccessToken ? (
+                    <button type="button" onClick={disconnectSpotify} className="glow-button-secondary border-rose-400/20 text-rose-200 hover:border-rose-300/30 hover:bg-rose-500/10">
+                      Disconnect
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-card glass-card-hover p-5">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Google Login</p>
+                  <p className="mt-2 text-sm text-slate-300">
+                    OAuth login with YouTube write access to create playlists and add matched tracks automatically.
+                  </p>
+                  <p className="mt-3 text-sm text-slate-200">
+                    Status: {googleAccessToken ? `Connected as ${googleUser?.email || 'User'}` : 'Not connected'}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={beginGoogleLogin} disabled={googleAuthLoading} className="glow-button-secondary">
+                    {googleAuthLoading ? 'Connecting...' : googleAccessToken ? 'Reconnect Google' : 'Login with Google'}
+                  </button>
+                  {googleAccessToken ? (
+                    <button type="button" onClick={disconnectGoogle} className="glow-button-secondary border-rose-400/20 text-rose-200 hover:border-rose-300/30 hover:bg-rose-500/10">
+                      Disconnect
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="mt-4 rounded-2xl border border-amber-400/15 bg-amber-400/10 px-4 py-3 text-xs leading-6 text-amber-100">
+                If Google shows <span className="font-semibold">access_denied</span>, add your account as a Test user in Google Cloud Console or publish the app.
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3 text-sm text-slate-300">
+              <span className="animate-glow-pulse inline-flex h-3 w-3 rounded-full bg-cyan-400 shadow-[0_0_18px_rgba(34,211,238,0.5)]" />
+              <span>Running async migration job in background.</span>
+            </div>
+            {canRetryFailed ? (
               <button
                 type="button"
-                onClick={beginSpotifyLogin}
-                disabled={spotifyAuthLoading}
-                className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!canRetryFailed}
+                onClick={handleRetryFailed}
+                className="glow-button-secondary border-amber-400/20 text-amber-100 hover:border-amber-300/30 hover:bg-amber-500/10"
               >
-                {spotifyAuthLoading ? 'Connecting...' : (spotifyAccessToken ? 'Reconnect Spotify' : 'Login with Spotify')}
+                Retry Failed Tracks ({job?.failedTracks || 0})
               </button>
-              {spotifyAccessToken ? (
-                <button
-                  type="button"
-                  onClick={disconnectSpotify}
-                  className="rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-100"
-                >
-                  Disconnect
-                </button>
-              ) : null}
-            </div>
+            ) : null}
           </div>
-        </div>
+        </form>
+      </motion.section>
 
-        <div className="mt-4 rounded-xl border border-clay bg-stone-50/70 p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-bold uppercase tracking-wide text-stone-600">Google Login</p>
-              <p className="mt-1 text-xs text-stone-500">
-                Use OAuth login with YouTube write access to create playlists and add matched tracks automatically.
-              </p>
-              <p className="mt-2 text-xs font-semibold text-stone-700">
-                Status: {googleAccessToken ? `Connected as ${googleUser?.email || 'User'}` : 'Not connected'}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={beginGoogleLogin}
-                disabled={googleAuthLoading}
-                className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {googleAuthLoading ? 'Connecting...' : (googleAccessToken ? 'Reconnect Google' : 'Login with Google')}
-              </button>
-              {googleAccessToken ? (
-                <button
-                  type="button"
-                  onClick={disconnectGoogle}
-                  className="rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-100"
-                >
-                  Disconnect
-                </button>
+      <div className="grid gap-6">
+        <JobSummaryCard job={job} progressPercent={progressPercent} loading={loading} report={report} reliabilityStats={reliabilityStats} />
+
+        <motion.section
+          className="glass-card glass-card-hover p-5 md:p-6"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-black text-white">Track filters</h2>
+                <p className="mt-1 text-sm text-slate-400">Toggle failed tracks only to inspect the problem set.</p>
+              </div>
+              {showFailedOnly && tracks ? (
+                <span className="badge-status badge-neutral">{tracks.filter((track) => track.matchStatus === 'FAILED').length} failed</span>
               ) : null}
             </div>
+            <label className="inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+              <input
+                type="checkbox"
+                checked={showFailedOnly}
+                onChange={(event) => setShowFailedOnly(event.target.checked)}
+                className="h-4 w-4 rounded border-white/20 bg-transparent accent-cyan-400"
+              />
+              Show only failed tracks
+            </label>
           </div>
-          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-            If Google shows <span className="font-semibold">access_denied</span>, your account must be added as a
-            <span className="font-semibold"> Test user</span> in Google Cloud Console or the OAuth app must be
-            published. Use the same Google account you added there before reconnecting.
-          </div>
-        </div>
-          <div className="mt-4 flex items-center gap-2 text-sm text-stone-600">
-            <span className="h-3 w-3 animate-pulse rounded-full bg-mint" />
-            <span>Running async migration job in background...</span>
-          </div>
-      </motion.form>
+        </motion.section>
+      </div>
+    </div>
+  );
+
+  return (
+    <main className="soft-grid mx-auto min-h-screen w-full max-w-7xl px-4 py-4 md:px-6 md:py-6">
+      <Navbar
+        currentView={view}
+        onViewChange={setView}
+        theme={theme}
+        onToggleTheme={() => setTheme((currentTheme) => (currentTheme === 'dark' ? 'light' : 'dark'))}
+        jobCount={jobHistory.length}
+      />
 
       {error ? (
         <motion.section
-          className="rounded-2xl border border-red-300 bg-red-50 p-4 text-sm text-red-700 shadow-panel"
+          className="glass-card mb-6 border-rose-400/20 bg-rose-500/10 p-4 text-sm text-rose-100"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
         >
@@ -763,53 +976,9 @@ function MigrationPage() {
         </motion.section>
       ) : null}
 
-      <JobSummaryCard
-        job={job}
-        progressPercent={progressPercent}
-        loading={loading}
-        report={report}
-        reliabilityStats={reliabilityStats}
-      />
+      {view === 'history' ? historySection : dashboardSection}
 
-      <motion.section
-        className="rounded-2xl border border-clay bg-white/80 p-4 shadow-panel"
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <label className="inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
-              <input
-                type="checkbox"
-                checked={showFailedOnly}
-                onChange={(event) => setShowFailedOnly(event.target.checked)}
-                className="h-4 w-4 rounded border-clay text-mint focus:ring-mint"
-              />
-              Show only failed tracks
-            </label>
-            {showFailedOnly && tracks && (
-              <span className="text-xs font-bold text-stone-500 bg-stone-100 px-2 py-1 rounded-full">
-                {tracks.filter(t => t.matchStatus === 'FAILED').length} failed
-              </span>
-            )}
-          </div>
-
-          {canRetryFailed && (
-            <button
-              type="button"
-              disabled={!canRetryFailed}
-              onClick={handleRetryFailed}
-              className="rounded-xl border-2 border-amber-400 bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-2 text-sm font-bold text-amber-700 transition hover:bg-amber-100 hover:border-amber-500 disabled:cursor-not-allowed disabled:opacity-50 flex items-center gap-2"
-            >
-              <span>🔄</span>
-              Retry Failed Tracks ({job?.failedTracks || 0})
-            </button>
-          )}
-        </div>
-      </motion.section>
-
-      <TrackTable tracks={visibleTracks} />
+      {view === 'dashboard' ? <TrackTable tracks={visibleTracks} /> : null}
     </main>
   );
 }
