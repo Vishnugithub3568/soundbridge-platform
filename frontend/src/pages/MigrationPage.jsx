@@ -169,6 +169,15 @@ function hasRequiredGoogleScope(scopeString) {
   return scopes.has(REQUIRED_YOUTUBE_SCOPE) || scopes.has('https://www.googleapis.com/auth/youtube');
 }
 
+function describeGoogleAuthError(authError) {
+  const normalized = String(authError || '').trim();
+  if (normalized === 'access_denied') {
+    return 'Google login was blocked because this OAuth app is still in testing. Add your Google account as a Test user in Google Cloud Console, or publish the app, then try again.';
+  }
+
+  return `Google login failed: ${normalized || 'unknown_error'}`;
+}
+
 function MigrationPage() {
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [spotifyAccessToken, setSpotifyAccessToken] = useState(() => readCachedSpotifyToken());
@@ -514,7 +523,7 @@ function MigrationPage() {
 
     if (authError) {
       clearQueryParams();
-      setError(`Google login failed: ${authError}`);
+      setError(describeGoogleAuthError(authError));
       setGoogleAuthLoading(false);
       return;
     }
@@ -685,6 +694,11 @@ function MigrationPage() {
                 </button>
               ) : null}
             </div>
+          </div>
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+            If Google shows <span className="font-semibold">access_denied</span>, your account must be added as a
+            <span className="font-semibold"> Test user</span> in Google Cloud Console or the OAuth app must be
+            published. Use the same Google account you added there before reconnecting.
           </div>
         </div>
           <div className="mt-4 flex items-center gap-2 text-sm text-stone-600">

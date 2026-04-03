@@ -59,6 +59,18 @@ npm run build
 	- `YOUTUBE_MATCH_THRESHOLD=0.45`
 	- `YOUTUBE_RETRY_MATCH_THRESHOLD=0.40`
 
+- Google OAuth note:
+   - If Google shows `access_denied` and says the app has not completed verification, add your Google account as a Test user in the Google Cloud OAuth consent screen or publish the app.
+   - The migration flow requires YouTube write scope: `https://www.googleapis.com/auth/youtube.force-ssl`.
+
+### Google Cloud Console Steps
+
+1. Open Google Cloud Console and select the project used by this app.
+2. Go to APIs & Services, then OAuth consent screen.
+3. If the app is in Testing, add your Gmail address under Test users.
+4. Confirm the authorized redirect URI matches the frontend callback URL.
+5. Reconnect Google in the app and approve the YouTube permission prompt again.
+
 ## Private Spotify Playlists
 
 - Public playlists can migrate with backend app credentials (`SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`).
