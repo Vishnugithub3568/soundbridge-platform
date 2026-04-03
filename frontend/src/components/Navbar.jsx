@@ -60,21 +60,20 @@ function Navbar({ currentView, onViewChange, theme, onToggleTheme, jobCount }) {
             role="switch"
             aria-checked={isDarkMode}
             aria-label="Toggle dark mode"
-            className={`relative flex h-11 w-[122px] items-center rounded-full border px-2 transition duration-300 ${
+            className={`relative flex h-9 w-20 items-center rounded-full border px-1.5 transition duration-300 ${
               isDarkMode
                 ? 'border-cyan-300/45 bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-600 shadow-[0_0_34px_rgba(56,189,248,0.55)]'
                 : 'border-cyan-300/25 bg-slate-900/70 shadow-[0_0_20px_rgba(56,189,248,0.25)]'
             }`}
           >
+            <span className="absolute left-2 text-[9px] font-black tracking-[0.12em] text-white/90">ON</span>
+            <span className="absolute right-2 text-[9px] font-black tracking-[0.12em] text-white/70">OFF</span>
             <span
-              className={`absolute inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-[10px] font-black text-sky-700 shadow-[0_2px_10px_rgba(2,6,23,0.35)] transition-all duration-300 ${
-                isDarkMode ? 'translate-x-[76px]' : 'translate-x-0'
+              className={`absolute inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-[9px] font-black text-sky-700 shadow-[0_2px_10px_rgba(2,6,23,0.35)] transition-all duration-300 ${
+                isDarkMode ? 'translate-x-[44px]' : 'translate-x-0'
               }`}
             >
-              {isDarkMode ? 'ON' : 'OFF'}
-            </span>
-            <span className={`pl-1 text-xs font-bold uppercase tracking-[0.2em] text-white/95 transition ${isDarkMode ? 'opacity-100' : 'opacity-80'}`}>
-              Blue
+              {isDarkMode ? '●' : '○'}
             </span>
           </button>
         </div>

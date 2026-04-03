@@ -891,7 +891,7 @@ function MigrationPage() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="glass-card glass-card-hover p-5">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Spotify Login</p>
                   <p className="mt-2 text-sm text-slate-300">
@@ -900,12 +900,21 @@ function MigrationPage() {
                   </p>
                   <p className="mt-3 text-sm text-slate-200">Status: {spotifyAccessToken ? 'Connected' : 'Not connected'}</p>
                 </div>
-                <div className="flex gap-2">
-                  <button type="button" onClick={beginSpotifyLogin} disabled={spotifyAuthLoading} className="glow-button-secondary">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={beginSpotifyLogin}
+                    disabled={spotifyAuthLoading}
+                    className="glow-button-secondary inline-flex min-w-[150px] flex-1 items-center justify-center"
+                  >
                     {spotifyAuthLoading ? 'Connecting...' : spotifyAccessToken ? 'Reconnect Spotify' : 'Login with Spotify'}
                   </button>
                   {spotifyAccessToken ? (
-                    <button type="button" onClick={disconnectSpotify} className="glow-button-secondary border-rose-400/20 text-rose-200 hover:border-rose-300/30 hover:bg-rose-500/10">
+                    <button
+                      type="button"
+                      onClick={disconnectSpotify}
+                      className="glow-button-secondary inline-flex min-w-[120px] flex-1 items-center justify-center border-rose-400/20 text-rose-200 hover:border-rose-300/30 hover:bg-rose-500/10"
+                    >
                       Disconnect
                     </button>
                   ) : null}
@@ -914,7 +923,7 @@ function MigrationPage() {
             </div>
 
             <div className="glass-card glass-card-hover p-5">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Google Login</p>
                   <p className="mt-2 text-sm text-slate-300">
@@ -924,12 +933,21 @@ function MigrationPage() {
                     Status: {googleAccessToken ? `Connected as ${googleUser?.email || 'User'}` : 'Not connected'}
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  <button type="button" onClick={beginGoogleLogin} disabled={googleAuthLoading} className="glow-button-secondary">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={beginGoogleLogin}
+                    disabled={googleAuthLoading}
+                    className="glow-button-secondary inline-flex min-w-[150px] flex-1 items-center justify-center"
+                  >
                     {googleAuthLoading ? 'Connecting...' : googleAccessToken ? 'Reconnect Google' : 'Login with Google'}
                   </button>
                   {googleAccessToken ? (
-                    <button type="button" onClick={disconnectGoogle} className="glow-button-secondary border-rose-400/20 text-rose-200 hover:border-rose-300/30 hover:bg-rose-500/10">
+                    <button
+                      type="button"
+                      onClick={disconnectGoogle}
+                      className="glow-button-secondary inline-flex min-w-[120px] flex-1 items-center justify-center border-rose-400/20 text-rose-200 hover:border-rose-300/30 hover:bg-rose-500/10"
+                    >
                       Disconnect
                     </button>
                   ) : null}
