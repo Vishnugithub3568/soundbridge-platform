@@ -22,8 +22,8 @@ function displayStatus(status) {
 
 function Stat({ label, value }) {
   return (
-    <div className="stat-card">
-      <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">{label}</p>
+    <div className="stat-card h-full min-h-[104px]">
+      <p className="text-[11px] uppercase tracking-[0.2em] leading-4 text-slate-400">{label}</p>
       <p className="mt-2 text-2xl font-black text-white">{value}</p>
     </div>
   );
@@ -74,7 +74,7 @@ function JobSummaryCard({ job, progressPercent, loading, report, reliabilityStat
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Stat label="Total" value={job.totalTracks} />
         <Stat label="Matched" value={job.matchedTracks} />
         <Stat label="Failed" value={job.failedTracks} />
