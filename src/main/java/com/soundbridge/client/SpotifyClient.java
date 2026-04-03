@@ -184,6 +184,117 @@ public class SpotifyClient {
         return tracks;
     }
 
+    public List<SpotifySearchCandidate> searchTrackCandidates(String trackName, String artistName, String spotifyUserAccessToken) {
+        String normalizedTrackName = Objects.requireNonNullElse(trackName, "").trim();
+        String normalizedArtistName = Objects.requireNonNullElse(artistName, "").trim();
+        if (normalizedTrackName.isBlank() || normalizedArtistName.isBlank()) {
+            return List.of();
+        }
+
+        String query = "track:" + normalizedTrackName + " artist:" + normalizedArtistName;
+        String url = UriComponentsBuilder
+            .fromUriString(apiBaseUrl + "/search")
+            .queryParam("q", query)
+            .queryParam("type", "track")
+            .queryParam("limit", 5)
+            .build()
+            .toUriString();
+
+        JsonNode body = getAuthorizedJson(url, spotifyUserAccessToken);
+        JsonNode items = body.path("tracks").path("items");
+        if (!items.isArray() || items.isEmpty()) {
+            return List.of();
+        }
+
+        List<SpotifySearchCandidate> candidates = new ArrayList<>();
+        for (JsonNode item : items) {
+            String id = item.path("id").asText("");
+            String name = item.path("name").asText("");
+            String uri = item.path("uri").asText("");
+            String externalUrl = item.path("external_urls").path("spotify").asText("");
+            String album = item.path("album").path("name").asText(null);
+            String artist = extractPrimaryArtist(item.path("artists"));
+            String thumbnailUrl = extractAlbumThumbnail(item.path("album").path("images"));
+
+            if (id.isBlank() || name.isBlank() || uri.isBlank()) {
+                continue;
+            }
+
+            candidates.add(new SpotifySearchCandidate(id, uri, name, artist, album, externalUrl, thumbnailUrl));
+        }
+
+        return candidates;
+    }
+
+    public String createPlaylist(String spotifyUserAccessToken, String title, String description) {
+        String token = Objects.requireNonNullElse(spotifyUserAccessToken, "").trim();
+        if (token.isBlank()) {
+            throw new IllegalArgumentException("Spotify access token is required to create Spotify playlist");
+        }
+
+        String playlistTitle = Objects.requireNonNullElse(title, "SoundBridge Migration").trim();
+        if (playlistTitle.isBlank()) {
+            playlistTitle = "SoundBridge Migration";
+        }
+
+        String url = UriComponentsBuilder
+            .fromUriString("https://api.spotify.com/v1/me/playlists")
+            .build()
+            .toUriString();
+
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("name", playlistTitle);
+        body.put("description", Objects.requireNonNullElse(description, "Migrated by SoundBridge"));
+        body.put("public", Boolean.FALSE);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        ResponseEntity<JsonNode> response = executeWithRetry(
+            "spotify-create-playlist",
+            () -> restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class)
+        );
+
+        JsonNode payload = response.getBody();
+        String playlistId = payload == null ? "" : payload.path("id").asText("");
+        if (playlistId.isBlank()) {
+            throw new IllegalStateException("Spotify playlist creation response did not include id");
+        }
+
+        return playlistId;
+    }
+
+    public void addTrackToPlaylist(String spotifyUserAccessToken, String playlistId, String trackUri) {
+        String token = Objects.requireNonNullElse(spotifyUserAccessToken, "").trim();
+        if (token.isBlank()) {
+            throw new IllegalArgumentException("Spotify access token is required to add items to Spotify playlist");
+        }
+        if (playlistId == null || playlistId.isBlank()) {
+            throw new IllegalArgumentException("Spotify playlist id is required");
+        }
+        if (trackUri == null || trackUri.isBlank()) {
+            throw new IllegalArgumentException("Spotify track uri is required");
+        }
+
+        String url = UriComponentsBuilder
+            .fromUriString(apiBaseUrl + "/playlists/{playlistId}/tracks")
+            .buildAndExpand(playlistId)
+            .toUriString();
+
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("uris", List.of(trackUri));
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        executeWithRetry(
+            "spotify-add-playlist-track",
+            () -> restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class)
+        );
+    }
+
     private List<SpotifyTrack> fetchPublicPlaylistTracks(String playlistId) {
         String playlistPageUrl = "https://open.spotify.com/playlist/" + playlistId;
         try {
@@ -285,6 +396,16 @@ public class SpotifyClient {
 
         long durationMs = trackNode.path("duration_ms").asLong(0L);
         return durationMs > 0L ? durationMs : null;
+    }
+
+    private String extractAlbumThumbnail(JsonNode imagesNode) {
+        if (!imagesNode.isArray() || imagesNode.isEmpty()) {
+            return null;
+        }
+
+        JsonNode first = imagesNode.get(0);
+        String url = first.path("url").asText("");
+        return url.isBlank() ? null : url;
     }
 
     private boolean isSafeFallbackCandidate(RuntimeException ex) {
@@ -411,6 +532,16 @@ public class SpotifyClient {
 
         throw Objects.requireNonNullElseGet(last, () -> new IllegalStateException("Unexpected retry failure"));
     }
+
+    public record SpotifySearchCandidate(
+        String id,
+        String uri,
+        String name,
+        String artist,
+        String album,
+        String externalUrl,
+        String thumbnailUrl
+    ) {}
 
     private boolean isRetryable(RuntimeException ex) {
         if (ex instanceof ResourceAccessException) {

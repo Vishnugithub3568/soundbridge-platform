@@ -4,6 +4,7 @@ import com.soundbridge.dto.CreateMigrationRequest;
 import com.soundbridge.dto.MigrationJobResponse;
 import com.soundbridge.dto.MigrationReportResponse;
 import com.soundbridge.dto.MigrationTrackResponse;
+import com.soundbridge.client.YouTubeMusicClient;
 import com.soundbridge.exception.MigrationException;
 import com.soundbridge.model.JobStatus;
 import com.soundbridge.model.MigrationJob;
@@ -26,19 +27,22 @@ public class MigrationService {
     private final MigrationAsyncProcessor migrationAsyncProcessor;
     private final ApplicationContext applicationContext;
     private final GoogleOAuthService googleOAuthService;
+    private final YouTubeMusicClient youTubeMusicClient;
 
     public MigrationService(
         MigrationJobRepository jobRepository,
         MigrationTrackRepository trackRepository,
         MigrationAsyncProcessor migrationAsyncProcessor,
         ApplicationContext applicationContext,
-        GoogleOAuthService googleOAuthService
+        GoogleOAuthService googleOAuthService,
+        YouTubeMusicClient youTubeMusicClient
     ) {
         this.jobRepository = jobRepository;
         this.trackRepository = trackRepository;
         this.migrationAsyncProcessor = migrationAsyncProcessor;
         this.applicationContext = applicationContext;
         this.googleOAuthService = googleOAuthService;
+        this.youTubeMusicClient = youTubeMusicClient;
     }
 
     public MigrationJobResponse startMigration(CreateMigrationRequest request) {
@@ -92,6 +96,12 @@ public class MigrationService {
         String youtubePlaylistUrl = Objects.requireNonNullElse(request.getSourcePlaylistUrl(), "").trim();
         if (youtubePlaylistUrl.isEmpty()) {
             throw new MigrationException("YouTube Music playlist URL is required", "MISSING_PLAYLIST_URL", 400);
+        }
+
+        try {
+            youTubeMusicClient.extractPlaylistId(youtubePlaylistUrl);
+        } catch (IllegalArgumentException ex) {
+            throw new MigrationException("Invalid YouTube Music playlist URL", "INVALID_PLAYLIST_URL", 400, ex);
         }
 
         String googleAccessToken = Objects.requireNonNullElse(request.getGoogleAccessToken(), "").trim();

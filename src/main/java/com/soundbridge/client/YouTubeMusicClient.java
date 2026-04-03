@@ -61,11 +61,16 @@ public class YouTubeMusicClient {
         throw new IllegalArgumentException("Invalid YouTube Music playlist URL format");
     }
 
+    public List<SpotifyTrack> fetchPlaylistTracks(String playlistUrl, String userAccessToken) {
+        String playlistId = extractPlaylistId(playlistUrl);
+        return fetchPlaylistTracksById(playlistId, userAccessToken);
+    }
+
     /**
      * Fetch playlist metadata and tracks (stub - requires authentication)
      * In production, this would use YouTube Data API v3 with OAuth token
      */
-    public YouTubeMusicPlaylist fetchPlaylistTracks(String playlistId, String userAccessToken) {
+    public List<SpotifyTrack> fetchPlaylistTracksById(String playlistId, String userAccessToken) {
         if (playlistId == null || playlistId.isBlank()) {
             throw new IllegalArgumentException("Playlist ID is required");
         }
@@ -81,26 +86,6 @@ public class YouTubeMusicClient {
         // 3. Fetching playlist items with music metadata
 
         log.warn("YouTube Music API fetch not yet implemented - returning empty playlist");
-        return new YouTubeMusicPlaylist(playlistId, "Migrated Playlist", new ArrayList<>());
+        return new ArrayList<>();
     }
-
-    /**
-     * YouTube Music playlist data model
-     */
-    public record YouTubeMusicPlaylist(
-        String playlistId,
-        String title,
-        List<YouTubeMusicTrack> tracks
-    ) {}
-
-    /**
-     * YouTube Music track data model
-     */
-    public record YouTubeMusicTrack(
-        String videoId,
-        String title,
-        String artist,
-        String album,
-        long durationMs
-    ) {}
 }

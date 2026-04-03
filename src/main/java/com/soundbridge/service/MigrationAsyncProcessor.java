@@ -4,6 +4,7 @@ import com.soundbridge.client.SpotifyClient;
 import com.soundbridge.client.SpotifyTrack;
 import com.soundbridge.client.YouTubeCandidate;
 import com.soundbridge.client.YouTubeClient;
+import com.soundbridge.client.YouTubeMusicClient;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
@@ -45,6 +46,7 @@ public class MigrationAsyncProcessor {
     private final MigrationTrackRepository trackRepository;
     private final SpotifyClient spotifyClient;
     private final YouTubeClient youTubeClient;
+    private final YouTubeMusicClient youTubeMusicClient;
     private final double matchThreshold;
     private final double retryMatchThreshold;
 
@@ -54,6 +56,7 @@ public class MigrationAsyncProcessor {
         MigrationTrackRepository trackRepository,
         SpotifyClient spotifyClient,
         YouTubeClient youTubeClient,
+        YouTubeMusicClient youTubeMusicClient,
         @Value("${youtube.match.threshold:0.65}") double matchThreshold,
         @Value("${youtube.retry.match.threshold:0.40}") double retryMatchThreshold
     ) {
@@ -61,6 +64,7 @@ public class MigrationAsyncProcessor {
         this.trackRepository = trackRepository;
         this.spotifyClient = spotifyClient;
         this.youTubeClient = youTubeClient;
+        this.youTubeMusicClient = youTubeMusicClient;
         this.matchThreshold = matchThreshold;
         this.retryMatchThreshold = retryMatchThreshold;
     }
@@ -69,9 +73,10 @@ public class MigrationAsyncProcessor {
         MigrationJobRepository jobRepository,
         MigrationTrackRepository trackRepository,
         SpotifyClient spotifyClient,
-        YouTubeClient youTubeClient
+        YouTubeClient youTubeClient,
+        YouTubeMusicClient youTubeMusicClient
     ) {
-        this(jobRepository, trackRepository, spotifyClient, youTubeClient, 0.65, 0.40);
+        this(jobRepository, trackRepository, spotifyClient, youTubeClient, youTubeMusicClient, 0.65, 0.40);
     }
 
     public void processMigration(UUID jobId) {
@@ -87,28 +92,30 @@ public class MigrationAsyncProcessor {
             job.setStatus(JobStatus.RUNNING);
             jobRepository.saveAndFlush(job);
 
-            List<SpotifyTrack> sourceTracks = spotifyClient.fetchPlaylistTracks(
-                job.getSourcePlaylistUrl(),
-                job.getSpotifyAccessToken()
-            );
+            boolean spotifyDestination = isSpotifyDestination(job);
+            String sourceAccessToken = spotifyDestination
+                ? Objects.requireNonNullElse(job.getGoogleAccessToken(), "").trim()
+                : Objects.requireNonNullElse(job.getSpotifyAccessToken(), "").trim();
+            String targetAccessToken = spotifyDestination
+                ? Objects.requireNonNullElse(job.getSpotifyAccessToken(), "").trim()
+                : Objects.requireNonNullElse(job.getGoogleAccessToken(), "").trim();
+
+            List<SpotifyTrack> sourceTracks = fetchSourceTracks(job, spotifyDestination, sourceAccessToken);
             if (sourceTracks == null) {
                 sourceTracks = List.of();
             }
 
-            String googleAccessToken = Objects.requireNonNullElse(job.getGoogleAccessToken(), "").trim();
-            if (googleAccessToken.isBlank()) {
-                throw new IllegalStateException("Google login is required to export tracks into a YouTube playlist.");
+            if (spotifyDestination && sourceTracks.isEmpty()) {
+                throw new IllegalStateException(
+                    "YouTube Music source playlist could not be read yet. Reverse migration is not fully available."
+                );
             }
 
             String targetPlaylistId = Objects.requireNonNullElse(job.getTargetPlaylistId(), "").trim();
             if (targetPlaylistId.isBlank()) {
-                targetPlaylistId = youTubeClient.createPlaylist(
-                    googleAccessToken,
-                    buildPlaylistTitle(),
-                    "Migrated from Spotify by SoundBridge. Source: " + job.getSourcePlaylistUrl()
-                );
+                targetPlaylistId = createTargetPlaylist(job, spotifyDestination, targetAccessToken);
                 job.setTargetPlaylistId(targetPlaylistId);
-                job.setTargetPlaylistUrl("https://music.youtube.com/playlist?list=" + targetPlaylistId);
+                job.setTargetPlaylistUrl(buildTargetPlaylistUrl(spotifyDestination, targetPlaylistId));
             }
 
             job.setTotalTracks(sourceTracks.size());
@@ -131,46 +138,12 @@ public class MigrationAsyncProcessor {
                 migrationTrack.setSourceAlbumName(sourceTrack.album());
 
                 boolean matchedTrack;
-                try {
-                    List<YouTubeCandidate> candidates = youTubeClient.searchCandidates(sourceTrack);
-                    matchedTrack = applyCandidateMatch(migrationTrack, sourceTrack, candidates, matchThreshold);
-                } catch (RuntimeException ex) {
-                    applySearchFallbackMatch(
-                        migrationTrack,
-                        sourceTrack,
-                        "SAFE_FALLBACK: YouTube lookup unavailable, linked search result"
-                    );
-                    log.warn(
-                        "Track-level lookup failed for source='{}' artist='{}' reason={}",
-                        sourceTrack.name(),
-                        sourceTrack.artist(),
-                        summarizeError(ex)
-                    );
-                    matchedTrack = true;
-                }
+                matchedTrack = spotifyDestination
+                    ? processSpotifyDestinationTrack(migrationTrack, sourceTrack, targetPlaylistId, targetAccessToken)
+                    : processYouTubeDestinationTrack(migrationTrack, sourceTrack, targetPlaylistId, targetAccessToken);
 
                 if (matchedTrack) {
-                    String videoId = Objects.requireNonNullElse(migrationTrack.getYouTubeVideoId(), "").trim();
-                    if (videoId.isBlank()) {
-                        markTrackAsPartial(
-                            migrationTrack,
-                            "PARTIAL: matched for review, but no direct YouTube video id was available for playlist export"
-                        );
-                        matched++;
-                    } else {
-                        try {
-                            youTubeClient.addVideoToPlaylist(googleAccessToken, targetPlaylistId, videoId);
-                            migrationTrack.setMatchStatus(TrackMatchStatus.MATCHED);
-                            migrationTrack.setFailureReason(null);
-                            matched++;
-                        } catch (RuntimeException ex) {
-                            markTrackAsPartial(
-                                migrationTrack,
-                                "PARTIAL: matched for review, but could not add track to YouTube playlist: " + summarizeError(ex)
-                            );
-                            matched++;
-                        }
-                    }
+                    matched++;
                 }
 
                 if (!matchedTrack) {
@@ -228,20 +201,19 @@ public class MigrationAsyncProcessor {
             job.setStatus(JobStatus.RUNNING);
             jobRepository.saveAndFlush(job);
 
-            String googleAccessToken = Objects.requireNonNullElse(job.getGoogleAccessToken(), "").trim();
-            if (googleAccessToken.isBlank()) {
-                throw new IllegalStateException("Google login is required to export tracks into a YouTube playlist.");
-            }
+            boolean spotifyDestination = isSpotifyDestination(job);
+            String sourceAccessToken = spotifyDestination
+                ? Objects.requireNonNullElse(job.getGoogleAccessToken(), "").trim()
+                : Objects.requireNonNullElse(job.getSpotifyAccessToken(), "").trim();
+            String targetAccessToken = spotifyDestination
+                ? Objects.requireNonNullElse(job.getSpotifyAccessToken(), "").trim()
+                : Objects.requireNonNullElse(job.getGoogleAccessToken(), "").trim();
 
             String targetPlaylistId = Objects.requireNonNullElse(job.getTargetPlaylistId(), "").trim();
             if (targetPlaylistId.isBlank()) {
-                targetPlaylistId = youTubeClient.createPlaylist(
-                    googleAccessToken,
-                    buildPlaylistTitle(),
-                    "Migrated from Spotify by SoundBridge. Source: " + job.getSourcePlaylistUrl()
-                );
+                targetPlaylistId = createTargetPlaylist(job, spotifyDestination, targetAccessToken);
                 job.setTargetPlaylistId(targetPlaylistId);
-                job.setTargetPlaylistUrl("https://music.youtube.com/playlist?list=" + targetPlaylistId);
+                job.setTargetPlaylistUrl(buildTargetPlaylistUrl(spotifyDestination, targetPlaylistId));
                 jobRepository.saveAndFlush(job);
             }
 
@@ -258,42 +230,12 @@ public class MigrationAsyncProcessor {
                     null
                 );
 
-                try {
-                    List<YouTubeCandidate> candidates = youTubeClient.searchCandidates(sourceTrack);
-                    applyCandidateMatch(track, sourceTrack, candidates, retryMatchThreshold);
-                } catch (RuntimeException ex) {
-                    applySearchFallbackMatch(
-                        track,
-                        sourceTrack,
-                        "SAFE_FALLBACK: YouTube lookup unavailable on retry, linked search result"
-                    );
-                    log.warn(
-                        "Retry lookup failed for source='{}' artist='{}' reason={}",
-                        sourceTrack.name(),
-                        sourceTrack.artist(),
-                        summarizeError(ex)
-                    );
-                }
+                boolean matchedTrack = spotifyDestination
+                    ? processSpotifyDestinationTrack(track, sourceTrack, targetPlaylistId, targetAccessToken)
+                    : processYouTubeDestinationTrack(track, sourceTrack, targetPlaylistId, targetAccessToken);
 
-                if (track.getMatchStatus() == TrackMatchStatus.MATCHED) {
-                    String videoId = Objects.requireNonNullElse(track.getYouTubeVideoId(), "").trim();
-                    if (videoId.isBlank()) {
-                        markTrackAsPartial(
-                            track,
-                            "PARTIAL: matched for review, but no direct YouTube video id was available for playlist export"
-                        );
-                    } else {
-                        try {
-                            youTubeClient.addVideoToPlaylist(googleAccessToken, targetPlaylistId, videoId);
-                            track.setMatchStatus(TrackMatchStatus.MATCHED);
-                            track.setFailureReason(null);
-                        } catch (RuntimeException ex) {
-                            markTrackAsPartial(
-                                track,
-                                "PARTIAL: matched for review, but could not add track to YouTube playlist: " + summarizeError(ex)
-                            );
-                        }
-                    }
+                if (matchedTrack && track.getMatchStatus() == TrackMatchStatus.MATCHED) {
+                    track.setFailureReason(null);
                 }
 
                 trackRepository.save(track);
@@ -396,6 +338,148 @@ public class MigrationAsyncProcessor {
     private void markTrackAsPartial(MigrationTrack migrationTrack, String reason) {
         migrationTrack.setMatchStatus(TrackMatchStatus.PARTIAL);
         migrationTrack.setFailureReason(reason);
+    }
+
+    private boolean isSpotifyDestination(MigrationJob job) {
+        return "SPOTIFY".equalsIgnoreCase(Objects.requireNonNullElse(job.getTargetPlatform(), ""));
+    }
+
+    private List<SpotifyTrack> fetchSourceTracks(MigrationJob job, boolean spotifyDestination, String sourceAccessToken) {
+        if (spotifyDestination) {
+            return youTubeMusicClient.fetchPlaylistTracks(job.getSourcePlaylistUrl(), sourceAccessToken);
+        }
+
+        return spotifyClient.fetchPlaylistTracks(job.getSourcePlaylistUrl(), sourceAccessToken);
+    }
+
+    private String createTargetPlaylist(MigrationJob job, boolean spotifyDestination, String targetAccessToken) {
+        if (spotifyDestination) {
+            if (targetAccessToken.isBlank()) {
+                throw new IllegalStateException("Spotify login is required to create Spotify playlist.");
+            }
+
+            return spotifyClient.createPlaylist(
+                targetAccessToken,
+                buildPlaylistTitle(),
+                "Migrated from YouTube Music by SoundBridge. Source: " + job.getSourcePlaylistUrl()
+            );
+        }
+
+        if (targetAccessToken.isBlank()) {
+            throw new IllegalStateException("Google login is required to export tracks into a YouTube playlist.");
+        }
+
+        return youTubeClient.createPlaylist(
+            targetAccessToken,
+            buildPlaylistTitle(),
+            "Migrated from Spotify by SoundBridge. Source: " + job.getSourcePlaylistUrl()
+        );
+    }
+
+    private String buildTargetPlaylistUrl(boolean spotifyDestination, String targetPlaylistId) {
+        if (spotifyDestination) {
+            return "https://open.spotify.com/playlist/" + targetPlaylistId;
+        }
+
+        return "https://music.youtube.com/playlist?list=" + targetPlaylistId;
+    }
+
+    private boolean processYouTubeDestinationTrack(
+        MigrationTrack migrationTrack,
+        SpotifyTrack sourceTrack,
+        String targetPlaylistId,
+        String googleAccessToken
+    ) {
+        try {
+            List<YouTubeCandidate> candidates = youTubeClient.searchCandidates(sourceTrack);
+            boolean matchedTrack = applyCandidateMatch(migrationTrack, sourceTrack, candidates, matchThreshold);
+            if (!matchedTrack) {
+                return false;
+            }
+
+            String videoId = Objects.requireNonNullElse(migrationTrack.getYouTubeVideoId(), "").trim();
+            if (videoId.isBlank()) {
+                markTrackAsPartial(
+                    migrationTrack,
+                    "PARTIAL: matched for review, but no direct YouTube video id was available for playlist export"
+                );
+                return true;
+            }
+
+            try {
+                youTubeClient.addVideoToPlaylist(googleAccessToken, targetPlaylistId, videoId);
+                migrationTrack.setMatchStatus(TrackMatchStatus.MATCHED);
+                migrationTrack.setFailureReason(null);
+            } catch (RuntimeException ex) {
+                markTrackAsPartial(
+                    migrationTrack,
+                    "PARTIAL: matched for review, but could not add track to YouTube playlist: " + summarizeError(ex)
+                );
+            }
+
+            return true;
+        } catch (RuntimeException ex) {
+            applySearchFallbackMatch(
+                migrationTrack,
+                sourceTrack,
+                "SAFE_FALLBACK: YouTube lookup unavailable, linked search result"
+            );
+            log.warn(
+                "Track-level lookup failed for source='{}' artist='{}' reason={}",
+                sourceTrack.name(),
+                sourceTrack.artist(),
+                summarizeError(ex)
+            );
+            return true;
+        }
+    }
+
+    private boolean processSpotifyDestinationTrack(
+        MigrationTrack migrationTrack,
+        SpotifyTrack sourceTrack,
+        String targetPlaylistId,
+        String spotifyAccessToken
+    ) {
+        try {
+            List<SpotifyClient.SpotifySearchCandidate> candidates = spotifyClient.searchTrackCandidates(
+                sourceTrack.name(),
+                sourceTrack.artist(),
+                spotifyAccessToken
+            );
+            if (candidates.isEmpty()) {
+                markTrackAsFailed(migrationTrack, "FAILED: No Spotify match found for source track");
+                return false;
+            }
+
+            SpotifyClient.SpotifySearchCandidate bestCandidate = candidates.get(0);
+            migrationTrack.setMatchStatus(TrackMatchStatus.MATCHED);
+            migrationTrack.setConfidenceScore(1.0);
+            migrationTrack.setMatchScore(1.0);
+            migrationTrack.setTargetTrackId(bestCandidate.id());
+            migrationTrack.setTargetTrackUrl(bestCandidate.externalUrl().isBlank()
+                ? "https://open.spotify.com/track/" + bestCandidate.id()
+                : bestCandidate.externalUrl());
+            migrationTrack.setTargetTrackTitle(bestCandidate.name());
+            migrationTrack.setTargetThumbnailUrl(bestCandidate.thumbnailUrl());
+            migrationTrack.setYouTubeTitle(null);
+            migrationTrack.setYouTubeVideoId(null);
+            migrationTrack.setFailureReason(null);
+
+            spotifyClient.addTrackToPlaylist(spotifyAccessToken, targetPlaylistId, bestCandidate.uri());
+            return true;
+        } catch (RuntimeException ex) {
+            markTrackAsPartial(
+                migrationTrack,
+                "PARTIAL: matched for review, but could not add track to Spotify playlist: " + summarizeError(ex)
+            );
+            log.warn(
+                "Spotify destination lookup failed for source='{}' artist='{}' reason={}",
+                sourceTrack.name(),
+                sourceTrack.artist(),
+                summarizeError(ex)
+            );
+            return true;
+        }
     }
 
     private String summarizeError(Exception ex) {
