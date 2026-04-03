@@ -1,7 +1,35 @@
 import axios from 'axios';
 
+function isLocalRuntimeHost() {
+  const host = window.location.hostname;
+  return host === 'localhost' || host === '127.0.0.1';
+}
+
+function isLoopbackUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+function resolveApiBaseUrl() {
+  const configured = String(import.meta.env.VITE_API_URL ?? '').trim();
+  if (!configured) {
+    return '/api';
+  }
+
+  // Ignore localhost API URLs in production deployments.
+  if (!isLocalRuntimeHost() && isLoopbackUrl(configured)) {
+    return '/api';
+  }
+
+  return configured;
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? '/api'
+  baseURL: resolveApiBaseUrl()
 });
 
 api.interceptors.response.use(
@@ -9,7 +37,7 @@ api.interceptors.response.use(
   (error) => {
     if (!error?.response) {
       const networkError = new Error(
-        'Cannot reach backend API. Start the backend on http://localhost:9000 or configure VITE_API_URL to a reachable server.'
+        'Cannot reach backend API. Set VITE_API_URL to your deployed backend URL and allow your frontend origin in CORS_ALLOWED_ORIGINS.'
       );
       networkError.cause = error;
       return Promise.reject(networkError);

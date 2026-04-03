@@ -119,6 +119,34 @@ function readCachedGoogleToken() {
   }
 }
 
+function isLocalRuntimeHost() {
+  const host = window.location.hostname;
+  return host === 'localhost' || host === '127.0.0.1';
+}
+
+function isLoopbackUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+function resolveRedirectUri(configuredValue, fallbackValue) {
+  const configured = String(configuredValue || '').trim();
+  if (!configured) {
+    return fallbackValue;
+  }
+
+  // Prevent production deployments from using localhost callback values by mistake.
+  if (!isLocalRuntimeHost() && isLoopbackUrl(configured)) {
+    return fallbackValue;
+  }
+
+  return configured;
+}
+
 function MigrationPage() {
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [spotifyAccessToken, setSpotifyAccessToken] = useState(() => readCachedSpotifyToken());
@@ -132,10 +160,10 @@ function MigrationPage() {
   const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
   const [error, setError] = useState('');
   const [showFailedOnly, setShowFailedOnly] = useState(false);
-  const spotifyClientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID ?? '';
-  const spotifyRedirectUri = (import.meta.env.VITE_SPOTIFY_REDIRECT_URI ?? window.location.origin).trim();
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '';
-  const googleRedirectUri = (import.meta.env.VITE_GOOGLE_REDIRECT_URI ?? `${window.location.origin}/callback`).trim();
+  const spotifyClientId = String(import.meta.env.VITE_SPOTIFY_CLIENT_ID ?? '').trim();
+  const spotifyRedirectUri = resolveRedirectUri(import.meta.env.VITE_SPOTIFY_REDIRECT_URI, window.location.origin);
+  const googleClientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim();
+  const googleRedirectUri = resolveRedirectUri(import.meta.env.VITE_GOOGLE_REDIRECT_URI, `${window.location.origin}/callback`);
 
   const canSubmit = useMemo(() => playlistUrl.trim().length > 0 && !loading, [playlistUrl, loading]);
 
@@ -270,7 +298,7 @@ function MigrationPage() {
 
       const authorizeUrl = new URL('https://accounts.spotify.com/authorize');
       authorizeUrl.searchParams.set('response_type', 'code');
-      authorizeUrl.searchParams.set('client_id', spotifyClientId.trim());
+      authorizeUrl.searchParams.set('client_id', spotifyClientId);
       authorizeUrl.searchParams.set('scope', SPOTIFY_SCOPES.join(' '));
       authorizeUrl.searchParams.set('redirect_uri', spotifyRedirectUri);
       authorizeUrl.searchParams.set('state', state);
@@ -310,7 +338,7 @@ function MigrationPage() {
 
       const authorizeUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       authorizeUrl.searchParams.set('response_type', 'code');
-      authorizeUrl.searchParams.set('client_id', googleClientId.trim());
+      authorizeUrl.searchParams.set('client_id', googleClientId);
       authorizeUrl.searchParams.set('scope', GOOGLE_SCOPES.join(' '));
       authorizeUrl.searchParams.set('redirect_uri', googleRedirectUri);
       authorizeUrl.searchParams.set('state', state);
@@ -377,7 +405,7 @@ function MigrationPage() {
         body.set('grant_type', 'authorization_code');
         body.set('code', code);
         body.set('redirect_uri', spotifyRedirectUri);
-        body.set('client_id', spotifyClientId.trim());
+        body.set('client_id', spotifyClientId);
         body.set('code_verifier', storedVerifier);
 
         const response = await fetch('https://accounts.spotify.com/api/token', {
@@ -389,7 +417,8 @@ function MigrationPage() {
         });
 
         if (!response.ok) {
-          throw new Error(`Spotify token exchange failed with status ${response.status}`);
+          const details = await response.text();
+          throw new Error(`Spotify token exchange failed (${response.status}): ${details || 'Unknown error'}`);
         }
 
         const tokenPayload = await response.json();
@@ -457,7 +486,7 @@ function MigrationPage() {
         body.set('grant_type', 'authorization_code');
         body.set('code', code);
         body.set('redirect_uri', googleRedirectUri);
-        body.set('client_id', googleClientId.trim());
+        body.set('client_id', googleClientId);
         body.set('code_verifier', storedVerifier);
 
         const response = await fetch('https://oauth2.googleapis.com/token', {
@@ -469,7 +498,8 @@ function MigrationPage() {
         });
 
         if (!response.ok) {
-          throw new Error(`Google token exchange failed with status ${response.status}`);
+          const details = await response.text();
+          throw new Error(`Google token exchange failed (${response.status}): ${details || 'Unknown error'}`);
         }
 
         const tokenPayload = await response.json();
