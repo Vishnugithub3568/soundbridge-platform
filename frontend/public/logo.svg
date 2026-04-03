@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="gold" x1="156" y1="136" x2="334" y2="410" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F4E2BC"/>
+      <stop offset="0.58" stop-color="#E7BE8A"/>
+      <stop offset="1" stop-color="#C98757"/>
+    </linearGradient>
+  </defs>
+
+  <path d="M118 252C161 252 191 225 206 193" stroke="url(#gold)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M206 193C224 232 288 232 306 193" stroke="url(#gold)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M306 193C321 225 351 252 394 252" stroke="url(#gold)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <path d="M206 152V193" stroke="url(#gold)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M306 152V193" stroke="url(#gold)" stroke-width="14" stroke-linecap="round"/>
+
+  <path d="M128 284H392" stroke="url(#gold)" stroke-width="14" stroke-linecap="square"/>
+  <path d="M164 252V284" stroke="url(#gold)" stroke-width="14" stroke-linecap="square"/>
+  <path d="M206 193V284" stroke="url(#gold)" stroke-width="14" stroke-linecap="square"/>
+  <path d="M306 193V284" stroke="url(#gold)" stroke-width="14" stroke-linecap="square"/>
+  <path d="M348 252V284" stroke="url(#gold)" stroke-width="14" stroke-linecap="square"/>
+
+  <path d="M206 308V364" stroke="url(#gold)" stroke-width="14" stroke-linecap="square"/>
+  <path d="M306 284V364" stroke="url(#gold)" stroke-width="14" stroke-linecap="square"/>
+
+  <ellipse cx="174" cy="392" rx="37" ry="28" fill="url(#gold)"/>
+  <ellipse cx="274" cy="350" rx="37" ry="28" fill="url(#gold)"/>
+</svg>
