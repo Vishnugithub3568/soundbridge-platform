@@ -41,6 +41,8 @@ class MigrationControllerTest {
             jobId,
             "https://open.spotify.com/playlist/abc",
             "YOUTUBE_MUSIC",
+            null,
+            null,
             JobStatus.QUEUED,
             0,
             0,
@@ -49,7 +51,7 @@ class MigrationControllerTest {
             Instant.now()
         );
 
-        when(migrationService.startMigration(anyString(), anyString())).thenReturn(response);
+        when(migrationService.startMigration(anyString(), anyString(), anyString())).thenReturn(response);
 
         mockMvc.perform(post("/migrate")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -67,6 +69,8 @@ class MigrationControllerTest {
             jobId,
             "https://open.spotify.com/playlist/abc",
             "YOUTUBE_MUSIC",
+            null,
+            null,
             JobStatus.RUNNING,
             6,
             2,

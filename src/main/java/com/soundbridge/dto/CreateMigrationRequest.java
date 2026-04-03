@@ -9,6 +9,8 @@ public class CreateMigrationRequest {
 
     private String spotifyAccessToken;
 
+    private String googleAccessToken;
+
     public String getSpotifyPlaylistUrl() {
         return spotifyPlaylistUrl;
     }
@@ -23,5 +25,13 @@ public class CreateMigrationRequest {
 
     public void setSpotifyAccessToken(String spotifyAccessToken) {
         this.spotifyAccessToken = spotifyAccessToken;
+    }
+
+    public String getGoogleAccessToken() {
+        return googleAccessToken;
+    }
+
+    public void setGoogleAccessToken(String googleAccessToken) {
+        this.googleAccessToken = googleAccessToken;
     }
 }

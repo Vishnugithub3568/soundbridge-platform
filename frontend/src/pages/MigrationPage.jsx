@@ -213,12 +213,18 @@ function MigrationPage() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
+
+    if (!googleAccessToken || !googleAccessToken.trim()) {
+      setError('Google login is required to export tracks into a YouTube Music playlist.');
+      return;
+    }
+
     setLoading(true);
     setTracks([]);
     setReport(null);
 
     try {
-      const createdJob = await startMigration(playlistUrl.trim(), spotifyAccessToken);
+      const createdJob = await startMigration(playlistUrl.trim(), spotifyAccessToken, googleAccessToken);
       setJob(createdJob);
       await refreshJobData(createdJob.id);
     } catch (submitError) {

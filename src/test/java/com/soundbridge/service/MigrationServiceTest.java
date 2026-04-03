@@ -53,7 +53,7 @@ class MigrationServiceTest {
         when(applicationContext.getBean(MigrationService.class)).thenReturn(migrationService);
         doNothing().when(migrationAsyncProcessor).processMigration(any(UUID.class));
 
-        var response = migrationService.startMigration("https://open.spotify.com/playlist/abc", null);
+        var response = migrationService.startMigration("https://open.spotify.com/playlist/abc", null, null);
 
         assertEquals(JobStatus.QUEUED, response.status());
         verify(migrationAsyncProcessor).processMigration(saved.getId());
@@ -61,6 +61,6 @@ class MigrationServiceTest {
 
     @Test
     void startMigrationRejectsBlankUrl() {
-        assertThrows(MigrationException.class, () -> migrationService.startMigration("  ", null));
+        assertThrows(MigrationException.class, () -> migrationService.startMigration("  ", null, null));
     }
 }

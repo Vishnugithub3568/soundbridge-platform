@@ -2,14 +2,19 @@ package com.soundbridge.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpStatusCodeException;
@@ -123,6 +128,91 @@ public class YouTubeClient {
             0.0,
             false,
             null
+        );
+    }
+
+    public String createPlaylist(String userAccessToken, String title, String description) {
+        String token = Objects.requireNonNullElse(userAccessToken, "").trim();
+        if (token.isBlank()) {
+            throw new IllegalArgumentException("Google access token is required to create YouTube playlist");
+        }
+
+        String playlistTitle = Objects.requireNonNullElse(title, "Spotify Migration").trim();
+        if (playlistTitle.isBlank()) {
+            playlistTitle = "Spotify Migration";
+        }
+
+        String url = UriComponentsBuilder
+            .fromUriString(apiBaseUrl + "/playlists")
+            .queryParam("part", "snippet,status")
+            .build()
+            .toUriString();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> snippet = new HashMap<>();
+        snippet.put("title", playlistTitle);
+        snippet.put("description", Objects.requireNonNullElse(description, "Migrated by SoundBridge"));
+
+        Map<String, Object> status = new HashMap<>();
+        status.put("privacyStatus", "private");
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("snippet", snippet);
+        body.put("status", status);
+
+        ResponseEntity<JsonNode> response = executeWithRetry(
+            "youtube-create-playlist",
+            () -> restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class)
+        );
+
+        JsonNode payload = response.getBody();
+        String playlistId = payload == null ? "" : payload.path("id").asText("");
+        if (playlistId.isBlank()) {
+            throw new IllegalStateException("YouTube playlist creation response did not include id");
+        }
+
+        return playlistId;
+    }
+
+    public void addVideoToPlaylist(String userAccessToken, String playlistId, String videoId) {
+        String token = Objects.requireNonNullElse(userAccessToken, "").trim();
+        if (token.isBlank()) {
+            throw new IllegalArgumentException("Google access token is required to add items to YouTube playlist");
+        }
+        if (playlistId == null || playlistId.isBlank()) {
+            throw new IllegalArgumentException("YouTube playlist id is required");
+        }
+        if (videoId == null || videoId.isBlank()) {
+            throw new IllegalArgumentException("YouTube video id is required");
+        }
+
+        String url = UriComponentsBuilder
+            .fromUriString(apiBaseUrl + "/playlistItems")
+            .queryParam("part", "snippet")
+            .build()
+            .toUriString();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> resourceId = new HashMap<>();
+        resourceId.put("kind", "youtube#video");
+        resourceId.put("videoId", videoId);
+
+        Map<String, Object> snippet = new HashMap<>();
+        snippet.put("playlistId", playlistId);
+        snippet.put("resourceId", resourceId);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("snippet", snippet);
+
+        executeWithRetry(
+            "youtube-add-playlist-item",
+            () -> restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class)
         );
     }
 

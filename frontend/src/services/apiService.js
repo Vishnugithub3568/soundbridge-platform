@@ -47,10 +47,13 @@ api.interceptors.response.use(
   }
 );
 
-export async function startMigration(spotifyPlaylistUrl, spotifyAccessToken) {
+export async function startMigration(spotifyPlaylistUrl, spotifyAccessToken, googleAccessToken) {
   const payload = { spotifyPlaylistUrl };
   if (spotifyAccessToken && spotifyAccessToken.trim()) {
     payload.spotifyAccessToken = spotifyAccessToken.trim();
+  }
+  if (googleAccessToken && googleAccessToken.trim()) {
+    payload.googleAccessToken = googleAccessToken.trim();
   }
 
   const response = await api.post('/migrate', payload);

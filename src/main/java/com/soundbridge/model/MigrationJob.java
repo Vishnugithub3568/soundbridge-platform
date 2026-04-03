@@ -25,6 +25,15 @@ public class MigrationJob {
     @Column(name = "spotify_access_token", length = 4096)
     private String spotifyAccessToken;
 
+    @Column(name = "google_access_token", length = 4096)
+    private String googleAccessToken;
+
+    @Column(name = "target_playlist_id", length = 512)
+    private String targetPlaylistId;
+
+    @Column(name = "target_playlist_url", length = 2048)
+    private String targetPlaylistUrl;
+
     @Column(name = "target_platform", nullable = false)
     private String targetPlatform = "YOUTUBE_MUSIC";
 
@@ -98,6 +107,30 @@ public class MigrationJob {
 
     public void setTargetPlatform(String targetPlatform) {
         this.targetPlatform = targetPlatform;
+    }
+
+    public String getGoogleAccessToken() {
+        return googleAccessToken;
+    }
+
+    public void setGoogleAccessToken(String googleAccessToken) {
+        this.googleAccessToken = googleAccessToken;
+    }
+
+    public String getTargetPlaylistId() {
+        return targetPlaylistId;
+    }
+
+    public void setTargetPlaylistId(String targetPlaylistId) {
+        this.targetPlaylistId = targetPlaylistId;
+    }
+
+    public String getTargetPlaylistUrl() {
+        return targetPlaylistUrl;
+    }
+
+    public void setTargetPlaylistUrl(String targetPlaylistUrl) {
+        this.targetPlaylistUrl = targetPlaylistUrl;
     }
 
     public JobStatus getStatus() {

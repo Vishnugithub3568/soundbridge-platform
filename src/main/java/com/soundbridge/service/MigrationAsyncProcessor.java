@@ -13,6 +13,7 @@ import com.soundbridge.model.MigrationJob;
 import com.soundbridge.model.MigrationTrack;
 import com.soundbridge.model.TrackMatchStatus;
 import java.util.Locale;
+import java.time.Instant;
 import com.soundbridge.repository.MigrationJobRepository;
 import com.soundbridge.repository.MigrationTrackRepository;
 import java.util.ArrayList;
@@ -92,6 +93,23 @@ public class MigrationAsyncProcessor {
             if (sourceTracks == null) {
                 sourceTracks = List.of();
             }
+
+            String googleAccessToken = Objects.requireNonNullElse(job.getGoogleAccessToken(), "").trim();
+            if (googleAccessToken.isBlank()) {
+                throw new IllegalStateException("Google login is required to export tracks into a YouTube playlist.");
+            }
+
+            String targetPlaylistId = Objects.requireNonNullElse(job.getTargetPlaylistId(), "").trim();
+            if (targetPlaylistId.isBlank()) {
+                targetPlaylistId = youTubeClient.createPlaylist(
+                    googleAccessToken,
+                    buildPlaylistTitle(),
+                    "Migrated from Spotify by SoundBridge. Source: " + job.getSourcePlaylistUrl()
+                );
+                job.setTargetPlaylistId(targetPlaylistId);
+                job.setTargetPlaylistUrl("https://music.youtube.com/playlist?list=" + targetPlaylistId);
+            }
+
             job.setTotalTracks(sourceTracks.size());
             job.setMatchedTracks(0);
             job.setFailedTracks(0);
@@ -131,8 +149,25 @@ public class MigrationAsyncProcessor {
                 }
 
                 if (matchedTrack) {
-                    matched++;
-                } else {
+                    String videoId = Objects.requireNonNullElse(migrationTrack.getYouTubeVideoId(), "").trim();
+                    if (videoId.isBlank()) {
+                        markTrackAsFailed(migrationTrack, "FAILED: no matched YouTube video id available for playlist export");
+                        matchedTrack = false;
+                    } else {
+                        try {
+                            youTubeClient.addVideoToPlaylist(googleAccessToken, targetPlaylistId, videoId);
+                            matched++;
+                        } catch (RuntimeException ex) {
+                            markTrackAsFailed(
+                                migrationTrack,
+                                "FAILED: could not add track to YouTube playlist: " + summarizeError(ex)
+                            );
+                            matchedTrack = false;
+                        }
+                    }
+                }
+
+                if (!matchedTrack) {
                     failed++;
                 }
 
@@ -187,6 +222,23 @@ public class MigrationAsyncProcessor {
             job.setStatus(JobStatus.RUNNING);
             jobRepository.saveAndFlush(job);
 
+            String googleAccessToken = Objects.requireNonNullElse(job.getGoogleAccessToken(), "").trim();
+            if (googleAccessToken.isBlank()) {
+                throw new IllegalStateException("Google login is required to export tracks into a YouTube playlist.");
+            }
+
+            String targetPlaylistId = Objects.requireNonNullElse(job.getTargetPlaylistId(), "").trim();
+            if (targetPlaylistId.isBlank()) {
+                targetPlaylistId = youTubeClient.createPlaylist(
+                    googleAccessToken,
+                    buildPlaylistTitle(),
+                    "Migrated from Spotify by SoundBridge. Source: " + job.getSourcePlaylistUrl()
+                );
+                job.setTargetPlaylistId(targetPlaylistId);
+                job.setTargetPlaylistUrl("https://music.youtube.com/playlist?list=" + targetPlaylistId);
+                jobRepository.saveAndFlush(job);
+            }
+
             List<MigrationTrack> allTracks = new ArrayList<>(trackRepository.findByJobIdOrderByIdAsc(jobId));
             for (MigrationTrack track : allTracks) {
                 if (track.getMatchStatus() != TrackMatchStatus.FAILED) {
@@ -216,6 +268,23 @@ public class MigrationAsyncProcessor {
                         summarizeError(ex)
                     );
                 }
+
+                if (track.getMatchStatus() == TrackMatchStatus.MATCHED) {
+                    String videoId = Objects.requireNonNullElse(track.getYouTubeVideoId(), "").trim();
+                    if (videoId.isBlank()) {
+                        markTrackAsFailed(track, "FAILED: no matched YouTube video id available for playlist export");
+                    } else {
+                        try {
+                            youTubeClient.addVideoToPlaylist(googleAccessToken, targetPlaylistId, videoId);
+                        } catch (RuntimeException ex) {
+                            markTrackAsFailed(
+                                track,
+                                "FAILED: could not add track to YouTube playlist: " + summarizeError(ex)
+                            );
+                        }
+                    }
+                }
+
                 trackRepository.save(track);
 
                 try {
@@ -313,6 +382,10 @@ public class MigrationAsyncProcessor {
     private String summarizeError(Exception ex) {
         String message = ex.getMessage();
         return message == null || message.isBlank() ? ex.getClass().getSimpleName() : message;
+    }
+
+    private String buildPlaylistTitle() {
+        return "SoundBridge Migration " + Instant.now().toString();
     }
 
     private ScoredCandidate findBestCandidate(SpotifyTrack sourceTrack, List<YouTubeCandidate> candidates) {
