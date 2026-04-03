@@ -17,11 +17,19 @@ const SPOTIFY_PKCE_VERIFIER_KEY = 'spotify_pkce_verifier';
 const SPOTIFY_PKCE_STATE_KEY = 'spotify_pkce_state';
 const SPOTIFY_TOKEN_CACHE_KEY = 'spotify_oauth_token';
 
-const GOOGLE_SCOPES = ['openid', 'profile', 'email'];
+const GOOGLE_SCOPES = [
+  'openid',
+  'profile',
+  'email',
+  'https://www.googleapis.com/auth/youtube.force-ssl'
+];
+const REQUIRED_YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.force-ssl';
 const GOOGLE_PKCE_VERIFIER_KEY = 'google_pkce_verifier';
 const GOOGLE_PKCE_STATE_KEY = 'google_pkce_state';
 const GOOGLE_TOKEN_CACHE_KEY = 'google_oauth_token';
 const GOOGLE_ID_TOKEN_CACHE_KEY = 'google_oauth_id_token';
+const GOOGLE_REQUIRED_SCOPE_MESSAGE =
+  'Google token is missing YouTube permission. Reconnect Google and approve YouTube access.';
 
 function isFallbackReason(reason) {
   const value = String(reason || '').trim();
@@ -89,9 +97,9 @@ function readCachedSpotifyToken() {
   }
 }
 
-function cacheGoogleToken(token, expiresInSeconds, idToken) {
+function cacheGoogleToken(token, expiresInSeconds, idToken, scope) {
   const expiresAt = Date.now() + Math.max(0, Number(expiresInSeconds || 3600)) * 1000;
-  const payload = JSON.stringify({ token, expiresAt });
+  const payload = JSON.stringify({ token, expiresAt, scope: String(scope || '').trim() });
   window.localStorage.setItem(GOOGLE_TOKEN_CACHE_KEY, payload);
   if (idToken) {
     window.localStorage.setItem(GOOGLE_ID_TOKEN_CACHE_KEY, idToken);
@@ -102,21 +110,24 @@ function readCachedGoogleToken() {
   try {
     const raw = window.localStorage.getItem(GOOGLE_TOKEN_CACHE_KEY);
     if (!raw) {
-      return '';
+      return { token: '', scope: '' };
     }
 
     const parsed = JSON.parse(raw);
     if (!parsed?.token || !parsed?.expiresAt || parsed.expiresAt <= Date.now() + 60000) {
       window.localStorage.removeItem(GOOGLE_TOKEN_CACHE_KEY);
       window.localStorage.removeItem(GOOGLE_ID_TOKEN_CACHE_KEY);
-      return '';
+      return { token: '', scope: '' };
     }
 
-    return parsed.token;
+    return {
+      token: parsed.token,
+      scope: String(parsed.scope || '').trim()
+    };
   } catch {
     window.localStorage.removeItem(GOOGLE_TOKEN_CACHE_KEY);
     window.localStorage.removeItem(GOOGLE_ID_TOKEN_CACHE_KEY);
-    return '';
+    return { token: '', scope: '' };
   }
 }
 
@@ -148,10 +159,21 @@ function resolveRedirectUri(configuredValue, fallbackValue) {
   return configured;
 }
 
+function hasRequiredGoogleScope(scopeString) {
+  const normalized = String(scopeString || '').trim();
+  if (!normalized) {
+    return false;
+  }
+
+  const scopes = new Set(normalized.split(/\s+/).filter(Boolean));
+  return scopes.has(REQUIRED_YOUTUBE_SCOPE) || scopes.has('https://www.googleapis.com/auth/youtube');
+}
+
 function MigrationPage() {
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [spotifyAccessToken, setSpotifyAccessToken] = useState(() => readCachedSpotifyToken());
-  const [googleAccessToken, setGoogleAccessToken] = useState(() => readCachedGoogleToken());
+  const [googleAccessToken, setGoogleAccessToken] = useState(() => readCachedGoogleToken().token);
+  const [googleScope, setGoogleScope] = useState(() => readCachedGoogleToken().scope);
   const [googleUser, setGoogleUser] = useState(null);
   const [job, setJob] = useState(null);
   const [tracks, setTracks] = useState([]);
@@ -266,6 +288,23 @@ function MigrationPage() {
     }
   }, [job?.status, error]);
 
+  useEffect(() => {
+    if (!googleAccessToken) {
+      return;
+    }
+
+    if (hasRequiredGoogleScope(googleScope)) {
+      return;
+    }
+
+    setGoogleAccessToken('');
+    setGoogleScope('');
+    setGoogleUser(null);
+    window.localStorage.removeItem(GOOGLE_TOKEN_CACHE_KEY);
+    window.localStorage.removeItem(GOOGLE_ID_TOKEN_CACHE_KEY);
+    setError(GOOGLE_REQUIRED_SCOPE_MESSAGE);
+  }, [googleAccessToken, googleScope]);
+
   const handleRetryFailed = async () => {
     if (!job?.id || loading) {
       return;
@@ -351,6 +390,9 @@ function MigrationPage() {
       authorizeUrl.searchParams.set('state', state);
       authorizeUrl.searchParams.set('code_challenge_method', 'S256');
       authorizeUrl.searchParams.set('code_challenge', challenge);
+      authorizeUrl.searchParams.set('access_type', 'offline');
+      authorizeUrl.searchParams.set('include_granted_scopes', 'true');
+      authorizeUrl.searchParams.set('prompt', 'consent');
 
       window.location.assign(authorizeUrl.toString());
     } catch {
@@ -361,6 +403,7 @@ function MigrationPage() {
 
   const disconnectGoogle = () => {
     setGoogleAccessToken('');
+    setGoogleScope('');
     setGoogleUser(null);
     window.localStorage.removeItem(GOOGLE_TOKEN_CACHE_KEY);
     window.localStorage.removeItem(GOOGLE_ID_TOKEN_CACHE_KEY);
@@ -494,8 +537,13 @@ function MigrationPage() {
           throw new Error('Google token exchange response did not include access_token');
         }
 
+        if (!hasRequiredGoogleScope(tokenPayload.scope)) {
+          throw new Error(GOOGLE_REQUIRED_SCOPE_MESSAGE);
+        }
+
         setGoogleAccessToken(tokenPayload.access_token);
-        cacheGoogleToken(tokenPayload.access_token, tokenPayload.expires_in, tokenPayload.id_token);
+        setGoogleScope(String(tokenPayload.scope || '').trim());
+        cacheGoogleToken(tokenPayload.access_token, tokenPayload.expires_in, tokenPayload.id_token, tokenPayload.scope);
 
         // Decode ID token to get user info
         if (tokenPayload.id_token) {
@@ -612,7 +660,7 @@ function MigrationPage() {
             <div>
               <p className="text-sm font-bold uppercase tracking-wide text-stone-600">Google Login</p>
               <p className="mt-1 text-xs text-stone-500">
-                Use OAuth login to enhance your experience with Google account integration.
+                Use OAuth login with YouTube write access to create playlists and add matched tracks automatically.
               </p>
               <p className="mt-2 text-xs font-semibold text-stone-700">
                 Status: {googleAccessToken ? `Connected as ${googleUser?.email || 'User'}` : 'Not connected'}

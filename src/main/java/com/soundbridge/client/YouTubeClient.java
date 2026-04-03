@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -28,6 +29,8 @@ public class YouTubeClient {
 
     private static final Logger log = LoggerFactory.getLogger(YouTubeClient.class);
     private static final long MAX_BACKOFF_MS = 5000L;
+    private static final String YOUTUBE_SCOPE_ERROR_MESSAGE =
+        "Google token is missing YouTube write permission. Reconnect Google and approve YouTube access, then retry migration.";
 
     private final RestTemplate restTemplate;
     private final String apiBaseUrl;
@@ -163,10 +166,15 @@ public class YouTubeClient {
         body.put("snippet", snippet);
         body.put("status", status);
 
-        ResponseEntity<JsonNode> response = executeWithRetry(
-            "youtube-create-playlist",
-            () -> restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class)
-        );
+        ResponseEntity<JsonNode> response;
+        try {
+            response = executeWithRetry(
+                "youtube-create-playlist",
+                () -> restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class)
+            );
+        } catch (HttpStatusCodeException ex) {
+            throw translateKnownYouTubeAuthError(ex);
+        }
 
         JsonNode payload = response.getBody();
         String playlistId = payload == null ? "" : payload.path("id").asText("");
@@ -210,10 +218,22 @@ public class YouTubeClient {
         Map<String, Object> body = new HashMap<>();
         body.put("snippet", snippet);
 
-        executeWithRetry(
-            "youtube-add-playlist-item",
-            () -> restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class)
-        );
+        try {
+            executeWithRetry(
+                "youtube-add-playlist-item",
+                () -> restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class)
+            );
+        } catch (HttpStatusCodeException ex) {
+            throw translateKnownYouTubeAuthError(ex);
+        }
+    }
+
+    private RuntimeException translateKnownYouTubeAuthError(HttpStatusCodeException ex) {
+        String body = Objects.requireNonNullElse(ex.getResponseBodyAsString(), "").toLowerCase(Locale.ROOT);
+        if (body.contains("access_token_scope_insufficient") || body.contains("insufficientpermissions")) {
+            return new IllegalStateException(YOUTUBE_SCOPE_ERROR_MESSAGE, ex);
+        }
+        return ex;
     }
 
     private String extractThumbnail(JsonNode thumbnailsNode) {

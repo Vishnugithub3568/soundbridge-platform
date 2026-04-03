@@ -11,7 +11,6 @@ import com.soundbridge.repository.MigrationTrackRepository;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.context.ApplicationContext;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -24,17 +23,20 @@ public class MigrationService {
     private final MigrationTrackRepository trackRepository;
     private final MigrationAsyncProcessor migrationAsyncProcessor;
     private final ApplicationContext applicationContext;
+    private final GoogleOAuthService googleOAuthService;
 
     public MigrationService(
         MigrationJobRepository jobRepository,
         MigrationTrackRepository trackRepository,
         MigrationAsyncProcessor migrationAsyncProcessor,
-        ApplicationContext applicationContext
+        ApplicationContext applicationContext,
+        GoogleOAuthService googleOAuthService
     ) {
         this.jobRepository = jobRepository;
         this.trackRepository = trackRepository;
         this.migrationAsyncProcessor = migrationAsyncProcessor;
         this.applicationContext = applicationContext;
+        this.googleOAuthService = googleOAuthService;
     }
 
     public MigrationJobResponse startMigration(String spotifyPlaylistUrl, String spotifyAccessToken, String googleAccessToken) {
@@ -45,6 +47,14 @@ public class MigrationService {
 
         String normalizedToken = Objects.requireNonNullElse(spotifyAccessToken, "").trim();
         String normalizedGoogleToken = Objects.requireNonNullElse(googleAccessToken, "").trim();
+
+        if (!normalizedGoogleToken.isEmpty() && !googleOAuthService.hasYouTubeWriteScope(normalizedGoogleToken)) {
+            throw new MigrationException(
+                "Google token is missing YouTube permission. Reconnect Google and approve YouTube access, then retry.",
+                "MISSING_YOUTUBE_SCOPE",
+                400
+            );
+        }
 
         MigrationJob job = new MigrationJob();
         job.setSourcePlaylistUrl(normalizedUrl);

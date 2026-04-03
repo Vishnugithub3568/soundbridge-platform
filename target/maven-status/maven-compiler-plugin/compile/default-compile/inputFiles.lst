@@ -8,6 +8,7 @@ E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\config\WebC
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\controller\AuthController.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\controller\MigrationController.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\CreateMigrationRequest.java
+E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\GoogleTokenExchangeRequest.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\MigrationJobResponse.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\MigrationReportResponse.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\MigrationTrackResponse.java
@@ -22,6 +23,7 @@ E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\repository\
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\repository\MigrationTrackRepository.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\repository\UserRepository.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\service\AuthService.java
+E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\service\GoogleOAuthService.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\service\MigrationAsyncProcessor.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\service\MigrationService.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\SoundbridgeApplication.java

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.HttpEntity;
@@ -19,6 +20,11 @@ import org.springframework.web.client.RestTemplate;
 
 @Service
 public class GoogleOAuthService {
+
+    private static final Set<String> YOUTUBE_WRITE_SCOPES = Set.of(
+        "https://www.googleapis.com/auth/youtube.force-ssl",
+        "https://www.googleapis.com/auth/youtube"
+    );
 
     private final RestTemplate restTemplate;
     private final String clientId;
@@ -90,5 +96,35 @@ public class GoogleOAuthService {
         }
 
         return payload;
+    }
+
+    public boolean hasYouTubeWriteScope(String accessToken) {
+        String token = Objects.requireNonNullElse(accessToken, "").trim();
+        if (token.isBlank()) {
+            return false;
+        }
+
+        String url = "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=" + token;
+        ResponseEntity<JsonNode> response;
+        try {
+            response = restTemplate.exchange(url, HttpMethod.GET, null, JsonNode.class);
+        } catch (HttpStatusCodeException ex) {
+            return false;
+        }
+
+        JsonNode body = response.getBody();
+        String scope = body == null ? "" : body.path("scope").asText("");
+        if (scope.isBlank()) {
+            return false;
+        }
+
+        String[] tokens = scope.split("\\s+");
+        for (String scopeToken : tokens) {
+            if (YOUTUBE_WRITE_SCOPES.contains(scopeToken)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

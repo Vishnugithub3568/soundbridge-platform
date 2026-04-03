@@ -35,11 +35,20 @@ class MigrationServiceTest {
     @Mock
     private ApplicationContext applicationContext;
 
+    @Mock
+    private GoogleOAuthService googleOAuthService;
+
     private MigrationService migrationService;
 
     @BeforeEach
     void setUp() {
-        migrationService = new MigrationService(jobRepository, trackRepository, migrationAsyncProcessor, applicationContext);
+        migrationService = new MigrationService(
+            jobRepository,
+            trackRepository,
+            migrationAsyncProcessor,
+            applicationContext,
+            googleOAuthService
+        );
     }
 
     @Test
@@ -62,5 +71,17 @@ class MigrationServiceTest {
     @Test
     void startMigrationRejectsBlankUrl() {
         assertThrows(MigrationException.class, () -> migrationService.startMigration("  ", null, null));
+    }
+
+    @Test
+    void startMigrationRejectsGoogleTokenWithoutYouTubeScope() {
+        when(googleOAuthService.hasYouTubeWriteScope("bad-token")).thenReturn(false);
+
+        MigrationException ex = assertThrows(
+            MigrationException.class,
+            () -> migrationService.startMigration("https://open.spotify.com/playlist/abc", null, "bad-token")
+        );
+
+        assertEquals("MISSING_YOUTUBE_SCOPE", ex.getErrorCode());
     }
 }
