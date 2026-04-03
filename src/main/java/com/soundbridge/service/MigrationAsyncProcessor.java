@@ -105,12 +105,6 @@ public class MigrationAsyncProcessor {
                 sourceTracks = List.of();
             }
 
-            if (spotifyDestination && sourceTracks.isEmpty()) {
-                throw new IllegalStateException(
-                    "YouTube Music source playlist could not be read yet. Reverse migration is not fully available."
-                );
-            }
-
             String targetPlaylistId = Objects.requireNonNullElse(job.getTargetPlaylistId(), "").trim();
             if (targetPlaylistId.isBlank()) {
                 targetPlaylistId = createTargetPlaylist(job, spotifyDestination, targetAccessToken);
