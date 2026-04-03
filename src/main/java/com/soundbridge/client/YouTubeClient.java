@@ -174,6 +174,15 @@ public class YouTubeClient {
                 () -> restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class)
             );
         } catch (HttpStatusCodeException ex) {
+            // Quota errors should not be retried, fail fast with user-friendly message
+            if (ex.getStatusCode().value() == 403
+                && ex.getResponseBodyAsString() != null
+                && ex.getResponseBodyAsString().toLowerCase(Locale.ROOT).contains("quota")) {
+                throw new IllegalStateException(
+                    "YouTube API quota exceeded. Please wait a while before retrying the migration. If quota was recently reset, contact support.",
+                    ex
+                );
+            }
             throw translateKnownYouTubeAuthError(ex);
         }
 
@@ -225,6 +234,15 @@ public class YouTubeClient {
                 () -> restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class)
             );
         } catch (HttpStatusCodeException ex) {
+            // Quota errors should not be retried, fail fast with user-friendly message
+            if (ex.getStatusCode().value() == 403
+                && ex.getResponseBodyAsString() != null
+                && ex.getResponseBodyAsString().toLowerCase(Locale.ROOT).contains("quota")) {
+                throw new IllegalStateException(
+                    "YouTube API quota exceeded. Please wait a while before retrying the migration. If quota was recently reset, contact support.",
+                    ex
+                );
+            }
             throw translateKnownYouTubeAuthError(ex);
         }
     }
@@ -233,6 +251,12 @@ public class YouTubeClient {
         String body = Objects.requireNonNullElse(ex.getResponseBodyAsString(), "").toLowerCase(Locale.ROOT);
         if (body.contains("access_token_scope_insufficient") || body.contains("insufficientpermissions")) {
             return new IllegalStateException(YOUTUBE_SCOPE_ERROR_MESSAGE, ex);
+        }
+        if (ex.getStatusCode().value() == 403 && body.contains("quota")) {
+            return new IllegalStateException(
+                "YouTube API quota exceeded. Please wait a while before retrying the migration. If quota was recently reset, contact support.",
+                ex
+            );
         }
         return ex;
     }
