@@ -50,6 +50,13 @@ function classifyReason(reason) {
     };
   }
 
+  if (value.startsWith('PARTIAL:')) {
+    return {
+      type: 'warning',
+      label: value.replace('PARTIAL:', '').trim() || 'Reviewable match with export limitations'
+    };
+  }
+
   if (value.startsWith('FAILED:')) {
     return {
       type: 'error',
@@ -219,6 +226,10 @@ function TrackTable({ tracks }) {
                     {reasonMeta.type === 'fallback' ? (
                       <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-50 px-2 py-1 font-semibold text-sky-700">
                         Reliable Fallback: {reasonMeta.label}
+                      </span>
+                    ) : reasonMeta.type === 'warning' ? (
+                      <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-1 font-semibold text-amber-700">
+                        Review Only: {reasonMeta.label}
                       </span>
                     ) : reasonMeta.type === 'error' ? (
                       <span className="font-medium text-red-600">{reasonMeta.label}</span>

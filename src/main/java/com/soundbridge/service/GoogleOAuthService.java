@@ -19,6 +19,7 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 @Service
+@SuppressWarnings("null")
 public class GoogleOAuthService {
 
     private static final Set<String> YOUTUBE_WRITE_SCOPES = Set.of(

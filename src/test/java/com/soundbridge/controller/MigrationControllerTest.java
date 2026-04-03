@@ -1,6 +1,5 @@
 package com.soundbridge.controller;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -27,6 +26,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(MigrationController.class)
+@SuppressWarnings({"null", "deprecation"})
 class MigrationControllerTest {
 
     @Autowired

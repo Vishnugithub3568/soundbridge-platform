@@ -29,6 +29,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
+@SuppressWarnings("null")
 public class MigrationAsyncProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(MigrationAsyncProcessor.class);
@@ -151,18 +152,23 @@ public class MigrationAsyncProcessor {
                 if (matchedTrack) {
                     String videoId = Objects.requireNonNullElse(migrationTrack.getYouTubeVideoId(), "").trim();
                     if (videoId.isBlank()) {
-                        markTrackAsFailed(migrationTrack, "FAILED: no matched YouTube video id available for playlist export");
-                        matchedTrack = false;
+                        markTrackAsPartial(
+                            migrationTrack,
+                            "PARTIAL: matched for review, but no direct YouTube video id was available for playlist export"
+                        );
+                        matched++;
                     } else {
                         try {
                             youTubeClient.addVideoToPlaylist(googleAccessToken, targetPlaylistId, videoId);
+                            migrationTrack.setMatchStatus(TrackMatchStatus.MATCHED);
+                            migrationTrack.setFailureReason(null);
                             matched++;
                         } catch (RuntimeException ex) {
-                            markTrackAsFailed(
+                            markTrackAsPartial(
                                 migrationTrack,
-                                "FAILED: could not add track to YouTube playlist: " + summarizeError(ex)
+                                "PARTIAL: matched for review, but could not add track to YouTube playlist: " + summarizeError(ex)
                             );
-                            matchedTrack = false;
+                            matched++;
                         }
                     }
                 }
@@ -272,14 +278,19 @@ public class MigrationAsyncProcessor {
                 if (track.getMatchStatus() == TrackMatchStatus.MATCHED) {
                     String videoId = Objects.requireNonNullElse(track.getYouTubeVideoId(), "").trim();
                     if (videoId.isBlank()) {
-                        markTrackAsFailed(track, "FAILED: no matched YouTube video id available for playlist export");
+                        markTrackAsPartial(
+                            track,
+                            "PARTIAL: matched for review, but no direct YouTube video id was available for playlist export"
+                        );
                     } else {
                         try {
                             youTubeClient.addVideoToPlaylist(googleAccessToken, targetPlaylistId, videoId);
+                            track.setMatchStatus(TrackMatchStatus.MATCHED);
+                            track.setFailureReason(null);
                         } catch (RuntimeException ex) {
-                            markTrackAsFailed(
+                            markTrackAsPartial(
                                 track,
-                                "FAILED: could not add track to YouTube playlist: " + summarizeError(ex)
+                                "PARTIAL: matched for review, but could not add track to YouTube playlist: " + summarizeError(ex)
                             );
                         }
                     }
@@ -308,7 +319,10 @@ public class MigrationAsyncProcessor {
 
     private void refreshJobCounters(MigrationJob job) {
         List<MigrationTrack> tracks = trackRepository.findByJobIdOrderByIdAsc(job.getId());
-        int matched = (int) tracks.stream().filter(track -> track.getMatchStatus() == TrackMatchStatus.MATCHED).count();
+        int matched = (int) tracks
+            .stream()
+            .filter(track -> track.getMatchStatus() == TrackMatchStatus.MATCHED || track.getMatchStatus() == TrackMatchStatus.PARTIAL)
+            .count();
         int failed = (int) tracks
             .stream()
             .filter(track -> track.getMatchStatus() == TrackMatchStatus.FAILED || track.getMatchStatus() == TrackMatchStatus.NOT_FOUND)
@@ -377,6 +391,11 @@ public class MigrationAsyncProcessor {
         migrationTrack.setFailureReason(reason);
         migrationTrack.setTargetTrackId(null);
         migrationTrack.setTargetTrackUrl(null);
+    }
+
+    private void markTrackAsPartial(MigrationTrack migrationTrack, String reason) {
+        migrationTrack.setMatchStatus(TrackMatchStatus.PARTIAL);
+        migrationTrack.setFailureReason(reason);
     }
 
     private String summarizeError(Exception ex) {

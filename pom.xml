@@ -19,6 +19,7 @@
 
     <properties>
         <java.version>17</java.version>
+        <bytebuddy.agent.version>1.15.11</bytebuddy.agent.version>
     </properties>
 
     <dependencies>
@@ -49,6 +50,12 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy-agent</artifactId>
+            <version>${bytebuddy.agent.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -56,6 +63,13 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>-javaagent:${settings.localRepository}/net/bytebuddy/byte-buddy-agent/${bytebuddy.agent.version}/byte-buddy-agent-${bytebuddy.agent.version}.jar -Xshare:off</argLine>
+                </configuration>
             </plugin>
         </plugins>
     </build>

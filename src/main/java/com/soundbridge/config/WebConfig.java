@@ -8,6 +8,7 @@ import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
+@SuppressWarnings("null")
 public class WebConfig implements WebMvcConfigurer {
 
     private final String[] allowedOrigins;

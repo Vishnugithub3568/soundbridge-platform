@@ -25,6 +25,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
+@SuppressWarnings("null")
 public class YouTubeClient {
 
     private static final Logger log = LoggerFactory.getLogger(YouTubeClient.class);

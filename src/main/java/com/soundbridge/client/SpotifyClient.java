@@ -32,6 +32,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
+@SuppressWarnings("null")
 public class SpotifyClient {
 
     private static final Logger log = LoggerFactory.getLogger(SpotifyClient.class);
@@ -108,7 +109,7 @@ public class SpotifyClient {
 
         List<SpotifyTrack> tracks = new ArrayList<>();
         String nextUrl = UriComponentsBuilder
-            .fromHttpUrl(apiBaseUrl + "/playlists/{playlistId}/tracks")
+            .fromUriString(apiBaseUrl + "/playlists/{playlistId}/tracks")
             .queryParam("limit", 100)
             .buildAndExpand(playlistId)
             .toUriString();
