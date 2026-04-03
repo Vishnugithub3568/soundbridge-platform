@@ -1,5 +1,7 @@
 # SoundBridge Platform
 
+SoundBridge helps users migrate music from Spotify to YouTube Music with a fast, reliable Spring Boot + React experience.
+
 End-to-end scaffold for Spotify to YouTube Music migration flow with a Spring Boot backend and React/Vite frontend.
 
 ## Backend
