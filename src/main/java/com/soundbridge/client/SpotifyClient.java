@@ -85,9 +85,18 @@ public class SpotifyClient {
         String normalizedUserToken = spotifyUserAccessToken == null ? "" : spotifyUserAccessToken.trim();
         boolean hasUserToken = !normalizedUserToken.isEmpty();
 
+        String normalizedPlaylistUrl = Objects.requireNonNullElse(playlistUrl, "").trim();
+        if (normalizedPlaylistUrl.contains("/album/")) {
+            throw new IllegalArgumentException(
+                "Spotify album URL detected. Please use a playlist URL (https://open.spotify.com/playlist/{id})."
+            );
+        }
+
         String playlistId = extractPlaylistId(playlistUrl);
         if (playlistId == null || playlistId.isBlank()) {
-            throw new IllegalArgumentException("Invalid Spotify playlist URL");
+            throw new IllegalArgumentException(
+                "Invalid Spotify playlist URL. Please use format: https://open.spotify.com/playlist/{id}."
+            );
         }
 
         if (!hasUserToken && (clientId == null || clientId.isBlank() || clientSecret == null || clientSecret.isBlank())) {

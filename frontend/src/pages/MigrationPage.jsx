@@ -235,6 +235,38 @@ function describeGoogleAuthError(authError) {
   return `Google login failed: ${normalized || 'unknown_error'}`;
 }
 
+function validateSourcePlaylistUrl(rawUrl, direction) {
+  const url = String(rawUrl || '').trim();
+  if (!url) {
+    return 'Playlist URL is required.';
+  }
+
+  const normalized = url.toLowerCase();
+
+  if (direction === 'SPOTIFY_TO_YOUTUBE') {
+    if (normalized.includes('/album/')) {
+      return 'Spotify album URL detected. Please use a playlist URL: https://open.spotify.com/playlist/{id}';
+    }
+    if (!normalized.includes('open.spotify.com/playlist/')) {
+      return 'Invalid Spotify playlist URL. Use format: https://open.spotify.com/playlist/{id}';
+    }
+    return '';
+  }
+
+  if (direction === 'YOUTUBE_TO_SPOTIFY') {
+    const isYouTubePlaylist =
+      (normalized.includes('music.youtube.com/playlist') || normalized.includes('youtube.com/playlist'))
+      && normalized.includes('list=');
+
+    if (!isYouTubePlaylist) {
+      return 'Invalid YouTube Music playlist URL. Use format: https://music.youtube.com/playlist?list={id}';
+    }
+    return '';
+  }
+
+  return 'Invalid migration direction selected.';
+}
+
 function MigrationPage() {
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [direction, setDirection] = useState('SPOTIFY_TO_YOUTUBE');
@@ -352,6 +384,12 @@ function MigrationPage() {
 
     const isSpotifyToYouTube = direction === 'SPOTIFY_TO_YOUTUBE';
     const isYouTubeToSpotify = direction === 'YOUTUBE_TO_SPOTIFY';
+    const sourceUrlError = validateSourcePlaylistUrl(playlistUrl, direction);
+
+    if (sourceUrlError) {
+      setError(sourceUrlError);
+      return;
+    }
 
     if (isSpotifyToYouTube && (!googleAccessToken || !googleAccessToken.trim())) {
       setError('Google login is required to export tracks into a YouTube Music playlist.');

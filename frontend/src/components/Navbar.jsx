@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion';
 
 function Navbar({ currentView, onViewChange, theme, onToggleTheme, jobCount }) {
+  const isDarkMode = theme === 'dark';
+
   return (
     <motion.nav
       className="sticky top-0 z-40 mb-6 rounded-[28px] border border-white/10 bg-slate-950/70 px-4 py-3 backdrop-blur-xl md:px-6"
@@ -55,9 +57,25 @@ function Navbar({ currentView, onViewChange, theme, onToggleTheme, jobCount }) {
           <button
             type="button"
             onClick={onToggleTheme}
-            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.02] hover:bg-white/10 hover:shadow-[0_0_24px_rgba(56,189,248,0.2)]"
+            role="switch"
+            aria-checked={isDarkMode}
+            aria-label="Toggle dark mode"
+            className={`relative flex h-11 w-[122px] items-center rounded-full border px-2 transition duration-300 ${
+              isDarkMode
+                ? 'border-cyan-300/45 bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-600 shadow-[0_0_34px_rgba(56,189,248,0.55)]'
+                : 'border-cyan-300/25 bg-slate-900/70 shadow-[0_0_20px_rgba(56,189,248,0.25)]'
+            }`}
           >
-            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            <span
+              className={`absolute inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-[10px] font-black text-sky-700 shadow-[0_2px_10px_rgba(2,6,23,0.35)] transition-all duration-300 ${
+                isDarkMode ? 'translate-x-[76px]' : 'translate-x-0'
+              }`}
+            >
+              {isDarkMode ? 'ON' : 'OFF'}
+            </span>
+            <span className={`pl-1 text-xs font-bold uppercase tracking-[0.2em] text-white/95 transition ${isDarkMode ? 'opacity-100' : 'opacity-80'}`}>
+              Blue
+            </span>
           </button>
         </div>
       </div>
