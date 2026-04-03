@@ -1,7 +1,10 @@
 package com.soundbridge.controller;
 
+import com.soundbridge.dto.GoogleTokenExchangeRequest;
 import com.soundbridge.model.User;
 import com.soundbridge.service.AuthService;
+import com.soundbridge.service.GoogleOAuthService;
+import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -19,9 +22,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final GoogleOAuthService googleOAuthService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, GoogleOAuthService googleOAuthService) {
         this.authService = authService;
+        this.googleOAuthService = googleOAuthService;
     }
 
     @PostMapping("/sync-user")
@@ -81,5 +86,29 @@ public class AuthController {
             "displayName", user.getDisplayName(),
             "updatedAt", user.getUpdatedAt()
         ));
+    }
+
+    @PostMapping("/google/token")
+    public ResponseEntity<?> exchangeGoogleToken(@Valid @RequestBody GoogleTokenExchangeRequest request) {
+        try {
+            Map<String, Object> response = googleOAuthService.exchangeAuthorizationCode(
+                request.getCode(),
+                request.getRedirectUri(),
+                request.getCodeVerifier()
+            );
+            return ResponseEntity.ok(response);
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "error", "server_config_error",
+                    "error_description", ex.getMessage()
+                ));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of(
+                    "error", "invalid_request",
+                    "error_description", ex.getMessage()
+                ));
+        }
     }
 }

@@ -76,3 +76,12 @@ export async function retryFailedTracks(jobId) {
   const response = await api.post(`/migrate/${jobId}/retry-failed`);
   return response.data;
 }
+
+export async function exchangeGoogleCode(code, redirectUri, codeVerifier) {
+  const response = await api.post('/auth/google/token', {
+    code,
+    redirectUri,
+    codeVerifier
+  });
+  return response.data;
+}

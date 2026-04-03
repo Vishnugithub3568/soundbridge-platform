@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import JobSummaryCard from '../components/JobSummaryCard';
 import TrackTable from '../components/TrackTable';
 import {
+  exchangeGoogleCode,
   getMigrationJob,
   getMigrationReport,
   getMigrationTracks,
@@ -482,27 +483,7 @@ function MigrationPage() {
     const exchangeCode = async () => {
       try {
         setGoogleAuthLoading(true);
-        const body = new URLSearchParams();
-        body.set('grant_type', 'authorization_code');
-        body.set('code', code);
-        body.set('redirect_uri', googleRedirectUri);
-        body.set('client_id', googleClientId);
-        body.set('code_verifier', storedVerifier);
-
-        const response = await fetch('https://oauth2.googleapis.com/token', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          body
-        });
-
-        if (!response.ok) {
-          const details = await response.text();
-          throw new Error(`Google token exchange failed (${response.status}): ${details || 'Unknown error'}`);
-        }
-
-        const tokenPayload = await response.json();
+        const tokenPayload = await exchangeGoogleCode(code, googleRedirectUri, storedVerifier);
         if (!tokenPayload?.access_token) {
           throw new Error('Google token exchange response did not include access_token');
         }
