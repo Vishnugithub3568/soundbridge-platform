@@ -10,6 +10,7 @@ import com.soundbridge.client.YouTubeMusicClient;
 import com.soundbridge.exception.MigrationException;
 import com.soundbridge.model.JobStatus;
 import com.soundbridge.model.MigrationJob;
+import com.soundbridge.model.TrackMatchStatus;
 import com.soundbridge.repository.MigrationJobRepository;
 import com.soundbridge.repository.MigrationTrackRepository;
 import java.util.List;
@@ -257,7 +258,16 @@ public class MigrationService {
             throw new MigrationException("Migration job is already in progress", "JOB_IN_PROGRESS", 409);
         }
 
-        if (job.getFailedTracks() <= 0) {
+        boolean hasRetryableTracks = trackRepository.findByJobIdOrderByIdAsc(jobId)
+            .stream()
+            .anyMatch(track -> {
+                TrackMatchStatus status = track.getMatchStatus();
+                return status == TrackMatchStatus.FAILED
+                    || status == TrackMatchStatus.PARTIAL
+                    || status == TrackMatchStatus.NOT_FOUND;
+            });
+
+        if (!hasRetryableTracks) {
             return MigrationJobResponse.from(job);
         }
 

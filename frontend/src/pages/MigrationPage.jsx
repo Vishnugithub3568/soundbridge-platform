@@ -324,6 +324,30 @@ function MigrationPage() {
     };
   }, [tracks]);
 
+  const retryableStats = useMemo(() => {
+    const summary = {
+      total: 0,
+      failed: 0,
+      partial: 0,
+      notFound: 0
+    };
+
+    for (const track of tracks || []) {
+      if (track.matchStatus === 'FAILED') {
+        summary.failed += 1;
+        summary.total += 1;
+      } else if (track.matchStatus === 'PARTIAL') {
+        summary.partial += 1;
+        summary.total += 1;
+      } else if (track.matchStatus === 'NOT_FOUND') {
+        summary.notFound += 1;
+        summary.total += 1;
+      }
+    }
+
+    return summary;
+  }, [tracks]);
+
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     document.documentElement.dataset.theme = theme;
@@ -512,7 +536,7 @@ function MigrationPage() {
     }
   };
 
-  const canRetryFailed = Boolean(job?.id) && !loading && (job?.failedTracks || 0) > 0;
+  const canRetryFailed = Boolean(job?.id) && !loading && retryableStats.total > 0;
 
   const beginSpotifyLogin = async () => {
     setError('');
@@ -1027,9 +1051,17 @@ function MigrationPage() {
           </div>
 
           <div className="mt-1 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3 text-sm text-slate-300">
-              <span className="animate-glow-pulse inline-flex h-3 w-3 rounded-full bg-cyan-400 shadow-[0_0_18px_rgba(34,211,238,0.5)]" />
-              <span>Running async migration job in background.</span>
+            <div className="flex flex-col gap-2 text-sm text-slate-300">
+              <div className="flex items-center gap-3">
+                <span className="animate-glow-pulse inline-flex h-3 w-3 rounded-full bg-cyan-400 shadow-[0_0_18px_rgba(34,211,238,0.5)]" />
+                <span>Running async migration job in background.</span>
+              </div>
+              {retryableStats.total > 0 ? (
+                <p className="text-xs text-slate-400">
+                  Retryable issues: {retryableStats.failed} failed, {retryableStats.partial} partial, {retryableStats.notFound} not-found.
+                  Reconnect OAuth if tokens expired, then retry.
+                </p>
+              ) : null}
             </div>
             {canRetryFailed ? (
               <button
@@ -1038,7 +1070,7 @@ function MigrationPage() {
                 onClick={handleRetryFailed}
                 className="glow-button-secondary border-amber-400/20 text-amber-100 hover:border-amber-300/30 hover:bg-amber-500/10"
               >
-                Retry Failed Tracks ({job?.failedTracks || 0})
+                Retry Issues ({retryableStats.total})
               </button>
             ) : null}
           </div>

@@ -23,6 +23,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,7 @@ public class MigrationAsyncProcessor {
         "LOW_CONFIDENCE_FALLBACK: best candidate accepted to keep migration reliable";
     private static final String NO_CANDIDATE_FALLBACK_REASON =
         "SAFE_FALLBACK: no candidates returned, linked YouTube Music search result";
+    private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
     private final MigrationJobRepository jobRepository;
     private final MigrationTrackRepository trackRepository;
@@ -213,7 +215,7 @@ public class MigrationAsyncProcessor {
 
             List<MigrationTrack> allTracks = new ArrayList<>(trackRepository.findByJobIdOrderByIdAsc(jobId));
             for (MigrationTrack track : allTracks) {
-                if (track.getMatchStatus() != TrackMatchStatus.FAILED) {
+                if (!isRetryableTrackStatus(track.getMatchStatus())) {
                     continue;
                 }
 
@@ -477,8 +479,48 @@ public class MigrationAsyncProcessor {
     }
 
     private String summarizeError(Exception ex) {
-        String message = ex.getMessage();
-        return message == null || message.isBlank() ? ex.getClass().getSimpleName() : message;
+        String message = Objects.requireNonNullElse(ex.getMessage(), "").trim();
+        if (message.isBlank()) {
+            return ex.getClass().getSimpleName();
+        }
+
+        String normalized = message.toLowerCase(Locale.ROOT);
+        if (normalized.contains("quota")) {
+            return "API quota exceeded. Wait for quota reset, then retry.";
+        }
+
+        if (normalized.contains("scope") || normalized.contains("permission")) {
+            return "OAuth permission missing. Reconnect account and approve required scopes.";
+        }
+
+        if (normalized.contains("access token") || normalized.contains("unauthorized") || normalized.contains("401")) {
+            return "Access token expired or invalid. Reconnect account and retry.";
+        }
+
+        if (
+            normalized.contains("timeout")
+                || normalized.contains("timed out")
+                || normalized.contains("connection")
+                || normalized.contains("i/o")
+                || normalized.contains("503")
+                || normalized.contains("502")
+                || normalized.contains("429")
+        ) {
+            return "Temporary network or API issue. Retry is recommended.";
+        }
+
+        String singleLine = WHITESPACE_PATTERN.matcher(message).replaceAll(" ").trim();
+        if (singleLine.length() > 180) {
+            return singleLine.substring(0, 177) + "...";
+        }
+
+        return singleLine;
+    }
+
+    private boolean isRetryableTrackStatus(TrackMatchStatus status) {
+        return status == TrackMatchStatus.FAILED
+            || status == TrackMatchStatus.PARTIAL
+            || status == TrackMatchStatus.NOT_FOUND;
     }
 
     private String buildPlaylistTitle() {
