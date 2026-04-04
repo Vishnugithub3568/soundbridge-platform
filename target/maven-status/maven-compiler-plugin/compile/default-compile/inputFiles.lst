@@ -11,6 +11,8 @@ E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\controller\
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\CreateMigrationRequest.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\GoogleTokenExchangeRequest.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\MigrationJobResponse.java
+E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\MigrationPreflightRequest.java
+E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\MigrationPreflightResponse.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\MigrationReportResponse.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\MigrationTrackResponse.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\exception\GlobalExceptionHandler.java

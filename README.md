@@ -24,6 +24,7 @@ mvn clean package -DskipTests
 
 - `GET /health`
 - `POST /migrate`
+- `POST /migrate/preflight`
 - `GET /migrate/{jobId}`
 - `GET /migrate/{jobId}/tracks`
 - `GET /migrate/{jobId}/report`

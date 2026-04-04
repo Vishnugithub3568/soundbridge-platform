@@ -63,6 +63,23 @@ export async function startMigration(sourcePlaylistUrl, spotifyAccessToken, goog
   return response.data;
 }
 
+export async function preflightMigration(sourcePlaylistUrl, spotifyAccessToken, googleAccessToken, direction = 'SPOTIFY_TO_YOUTUBE') {
+  const payload = {
+    sourcePlaylistUrl,
+    direction
+  };
+
+  if (spotifyAccessToken && spotifyAccessToken.trim()) {
+    payload.spotifyAccessToken = spotifyAccessToken.trim();
+  }
+  if (googleAccessToken && googleAccessToken.trim()) {
+    payload.googleAccessToken = googleAccessToken.trim();
+  }
+
+  const response = await api.post('/migrate/preflight', payload);
+  return response.data;
+}
+
 export async function getMigrationJob(jobId) {
   const response = await api.get(`/migrate/${jobId}`);
   return response.data;

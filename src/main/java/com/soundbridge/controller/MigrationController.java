@@ -2,6 +2,8 @@ package com.soundbridge.controller;
 
 import com.soundbridge.dto.CreateMigrationRequest;
 import com.soundbridge.dto.MigrationJobResponse;
+import com.soundbridge.dto.MigrationPreflightRequest;
+import com.soundbridge.dto.MigrationPreflightResponse;
 import com.soundbridge.dto.MigrationReportResponse;
 import com.soundbridge.dto.MigrationTrackResponse;
 import com.soundbridge.service.MigrationService;
@@ -37,6 +39,11 @@ public class MigrationController {
     public ResponseEntity<MigrationJobResponse> migrate(@Valid @RequestBody CreateMigrationRequest request) {
         MigrationJobResponse response = migrationService.startMigration(request);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
+    }
+
+    @PostMapping("/migrate/preflight")
+    public MigrationPreflightResponse preflight(@Valid @RequestBody MigrationPreflightRequest request) {
+        return migrationService.preflight(request);
     }
 
     @GetMapping("/migrate/{jobId}")

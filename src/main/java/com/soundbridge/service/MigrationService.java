@@ -2,6 +2,8 @@ package com.soundbridge.service;
 
 import com.soundbridge.dto.CreateMigrationRequest;
 import com.soundbridge.dto.MigrationJobResponse;
+import com.soundbridge.dto.MigrationPreflightRequest;
+import com.soundbridge.dto.MigrationPreflightResponse;
 import com.soundbridge.dto.MigrationReportResponse;
 import com.soundbridge.dto.MigrationTrackResponse;
 import com.soundbridge.client.YouTubeMusicClient;
@@ -13,6 +15,9 @@ import com.soundbridge.repository.MigrationTrackRepository;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.context.ApplicationContext;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -21,6 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @SuppressWarnings("null")
 public class MigrationService {
+
+    private static final Pattern SPOTIFY_PLAYLIST_PATTERN = Pattern.compile("open\\.spotify\\.com/playlist/([A-Za-z0-9]+)");
 
     private final MigrationJobRepository jobRepository;
     private final MigrationTrackRepository trackRepository;
@@ -57,6 +64,86 @@ public class MigrationService {
         } else {
             throw new MigrationException("Invalid migration direction", "INVALID_DIRECTION", 400);
         }
+    }
+
+    public MigrationPreflightResponse preflight(MigrationPreflightRequest request) {
+        if (request == null) {
+            throw new MigrationException("Migration request is required", "MISSING_REQUEST", 400);
+        }
+
+        String direction = Objects.requireNonNullElse(request.getDirection(), "SPOTIFY_TO_YOUTUBE").trim();
+        String sourcePlaylistUrl = Objects.requireNonNullElse(request.getSourcePlaylistUrl(), "").trim();
+        String spotifyAccessToken = Objects.requireNonNullElse(request.getSpotifyAccessToken(), "").trim();
+        String googleAccessToken = Objects.requireNonNullElse(request.getGoogleAccessToken(), "").trim();
+
+        List<String> blockers = new ArrayList<>();
+        List<String> recommendations = new ArrayList<>();
+
+        String sourcePlatform;
+        String targetPlatform;
+        String playlistId = "";
+        boolean validUrl = false;
+
+        if ("SPOTIFY_TO_YOUTUBE".equalsIgnoreCase(direction)) {
+            sourcePlatform = "SPOTIFY";
+            targetPlatform = "YOUTUBE_MUSIC";
+
+            playlistId = extractSpotifyPlaylistIdSafe(sourcePlaylistUrl);
+            validUrl = !playlistId.isBlank();
+            if (!validUrl) {
+                blockers.add("Invalid Spotify playlist URL. Use https://open.spotify.com/playlist/{id}");
+            }
+
+            if (googleAccessToken.isBlank()) {
+                blockers.add("Google login is required to create playlists in YouTube Music.");
+            } else if (!googleOAuthService.hasYouTubeWriteScope(googleAccessToken)) {
+                blockers.add("Google token is missing YouTube write permission.");
+                recommendations.add("Reconnect Google and approve YouTube access scope.");
+            }
+
+            if (spotifyAccessToken.isBlank()) {
+                recommendations.add("Connect Spotify if the source playlist is private or collaborative.");
+            }
+        } else if ("YOUTUBE_TO_SPOTIFY".equalsIgnoreCase(direction)) {
+            sourcePlatform = "YOUTUBE_MUSIC";
+            targetPlatform = "SPOTIFY";
+
+            try {
+                playlistId = youTubeMusicClient.extractPlaylistId(sourcePlaylistUrl);
+                validUrl = !playlistId.isBlank();
+            } catch (IllegalArgumentException ex) {
+                validUrl = false;
+            }
+
+            if (!validUrl) {
+                blockers.add("Invalid YouTube Music playlist URL. Use https://music.youtube.com/playlist?list={id}");
+            }
+
+            if (googleAccessToken.isBlank()) {
+                blockers.add("Google login is required to read YouTube Music playlists.");
+            }
+
+            if (spotifyAccessToken.isBlank()) {
+                blockers.add("Spotify login is required to create playlists and add tracks.");
+            }
+        } else {
+            sourcePlatform = "UNKNOWN";
+            targetPlatform = "UNKNOWN";
+            blockers.add("Invalid migration direction selected.");
+        }
+
+        boolean readyToStart = validUrl && blockers.isEmpty();
+
+        return new MigrationPreflightResponse(
+            validUrl,
+            readyToStart,
+            direction,
+            sourcePlatform,
+            targetPlatform,
+            playlistId,
+            blockers,
+            recommendations
+        );
     }
 
     private MigrationJobResponse startSpotifyToYouTubeMigration(CreateMigrationRequest request) {
@@ -226,6 +313,20 @@ public class MigrationService {
     private MigrationJob getJobEntity(UUID jobId) {
         return jobRepository.findById(jobId)
             .orElseThrow(() -> new MigrationException("Migration job not found", "JOB_NOT_FOUND", 404));
+    }
+
+    private String extractSpotifyPlaylistIdSafe(String playlistUrl) {
+        String normalized = Objects.requireNonNullElse(playlistUrl, "").trim();
+        if (normalized.isEmpty()) {
+            return "";
+        }
+
+        Matcher matcher = SPOTIFY_PLAYLIST_PATTERN.matcher(normalized);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+
+        return "";
     }
 
     private void ensureJobExists(UUID jobId) {

@@ -8,6 +8,7 @@ import {
   getMigrationJob,
   getMigrationReport,
   getMigrationTracks,
+  preflightMigration,
   retryFailedTracks,
   startMigration
 } from '../services/apiService';
@@ -281,6 +282,8 @@ function MigrationPage() {
   const [report, setReport] = useState(null);
   const [jobHistory, setJobHistory] = useState(() => readJobHistory());
   const [loading, setLoading] = useState(false);
+  const [preflightLoading, setPreflightLoading] = useState(false);
+  const [preflightResult, setPreflightResult] = useState(null);
   const [spotifyAuthLoading, setSpotifyAuthLoading] = useState(false);
   const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
   const [error, setError] = useState('');
@@ -420,6 +423,25 @@ function MigrationPage() {
       setLoading(false);
     }
   };
+
+  const handlePreflight = async () => {
+    setError('');
+    setPreflightLoading(true);
+
+    try {
+      const result = await preflightMigration(playlistUrl.trim(), spotifyAccessToken, googleAccessToken, direction);
+      setPreflightResult(result);
+    } catch (preflightError) {
+      setPreflightResult(null);
+      setError(preflightError?.response?.data?.error || preflightError.message || 'Failed to run preflight checks');
+    } finally {
+      setPreflightLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setPreflightResult(null);
+  }, [playlistUrl, direction, spotifyAccessToken, googleAccessToken]);
 
   useEffect(() => {
     if (!job?.id) {
@@ -883,11 +905,56 @@ function MigrationPage() {
               />
             </div>
             <div className="flex items-end">
-              <button type="submit" disabled={!canSubmit} className="glow-button w-full md:w-auto">
-                {loading ? 'Migrating...' : 'Start Migration'}
-              </button>
+              <div className="flex w-full flex-col gap-2 md:w-auto">
+                <button
+                  type="button"
+                  disabled={!playlistUrl.trim() || preflightLoading || loading}
+                  onClick={handlePreflight}
+                  className="glow-button-secondary w-full md:w-auto"
+                >
+                  {preflightLoading ? 'Checking...' : 'Run Preflight'}
+                </button>
+                <button type="submit" disabled={!canSubmit} className="glow-button w-full md:w-auto">
+                  {loading ? 'Migrating...' : 'Start Migration'}
+                </button>
+              </div>
             </div>
           </div>
+
+          {preflightResult ? (
+            <section className={`rounded-2xl border px-4 py-4 text-sm ${preflightResult.readyToStart ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-100' : 'border-amber-400/20 bg-amber-500/10 text-amber-100'}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.2em]">Preflight</span>
+                <span className="rounded-full border border-current/30 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]">
+                  {preflightResult.readyToStart ? 'Ready' : 'Needs attention'}
+                </span>
+                {preflightResult.playlistId ? (
+                  <span className="font-mono text-xs text-white/80">playlist: {preflightResult.playlistId}</span>
+                ) : null}
+              </div>
+
+              {preflightResult.blockers?.length ? (
+                <ul className="mt-3 list-disc space-y-1 pl-5">
+                  {preflightResult.blockers.map((blocker) => (
+                    <li key={blocker}>{blocker}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3">All required checks passed for this direction.</p>
+              )}
+
+              {preflightResult.recommendations?.length ? (
+                <div className="mt-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">Recommendations</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-white/85">
+                    {preflightResult.recommendations.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           <div className="grid gap-5 lg:grid-cols-2">
             <div className="glass-card glass-card-hover p-5">
