@@ -124,6 +124,35 @@ export async function getMigrationHistory(userId, limit = 20) {
   return Array.isArray(response.data) ? response.data : [];
 }
 
+export async function getDashboardOverview(userId, email = '') {
+  const response = await api.get('/dashboard/overview', {
+    params: {
+      userId: String(userId || '').trim(),
+      email: String(email || '').trim()
+    }
+  });
+  return response.data;
+}
+
+export async function getDashboardLibrary(userId) {
+  const response = await api.get('/dashboard/library', {
+    params: {
+      userId: String(userId || '').trim()
+    }
+  });
+  return Array.isArray(response.data) ? response.data : [];
+}
+
+export async function getDashboardServicesStatus() {
+  const response = await api.get('/dashboard/services-status');
+  return Array.isArray(response.data) ? response.data : [];
+}
+
+export async function getDashboardNavigation() {
+  const response = await api.get('/dashboard/navigation');
+  return Array.isArray(response.data) ? response.data : [];
+}
+
 export async function exchangeGoogleCode(code, redirectUri, codeVerifier) {
   const response = await api.post('/auth/google/token', {
     code,

@@ -4,6 +4,10 @@ import Navbar from '../components/Navbar';
 import JobSummaryCard from '../components/JobSummaryCard';
 import TrackTable from '../components/TrackTable';
 import {
+  getDashboardLibrary,
+  getDashboardNavigation,
+  getDashboardOverview,
+  getDashboardServicesStatus,
   exchangeGoogleCode,
   getMigrationJob,
   getMigrationHistory,
@@ -353,7 +357,7 @@ function MigrationPage() {
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [direction, setDirection] = useState('SPOTIFY_TO_YOUTUBE');
   const [theme, setTheme] = useState(() => readThemePreference());
-  const [view, setView] = useState('dashboard');
+  const [view, setView] = useState('home');
   const [spotifyAccessToken, setSpotifyAccessToken] = useState(() => readCachedSpotifyToken());
   const [googleAccessToken, setGoogleAccessToken] = useState(() => readCachedGoogleToken().token);
   const [googleScope, setGoogleScope] = useState(() => readCachedGoogleToken().scope);
@@ -376,6 +380,12 @@ function MigrationPage() {
   const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
   const [error, setError] = useState('');
   const [showFailedOnly, setShowFailedOnly] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [dashboardOverview, setDashboardOverview] = useState(null);
+  const [dashboardLibrary, setDashboardLibrary] = useState([]);
+  const [dashboardServices, setDashboardServices] = useState([]);
+  const [navigationItems, setNavigationItems] = useState(['Home', 'Plans', 'Terms of Service', 'Help', 'Services Status']);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
   const spotifyClientId = String(import.meta.env.VITE_SPOTIFY_CLIENT_ID ?? '').trim();
   const spotifyRedirectUri = resolveRedirectUri(import.meta.env.VITE_SPOTIFY_REDIRECT_URI, window.location.origin);
   const googleClientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim();
@@ -453,6 +463,52 @@ function MigrationPage() {
       // ignore storage failures
     }
   }, [jobHistory]);
+
+  useEffect(() => {
+    if (!appUserId) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const loadDashboardData = async () => {
+      setDashboardLoading(true);
+      try {
+        const [overview, library, services, navigation] = await Promise.all([
+          getDashboardOverview(appUserId, appUserEmail),
+          getDashboardLibrary(appUserId),
+          getDashboardServicesStatus(),
+          getDashboardNavigation()
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setDashboardOverview(overview);
+        setDashboardLibrary(library);
+        setDashboardServices(services);
+        if (navigation.length) {
+          setNavigationItems(navigation);
+        }
+      } catch {
+        if (!cancelled) {
+          setDashboardLibrary([]);
+          setDashboardServices([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setDashboardLoading(false);
+        }
+      }
+    };
+
+    loadDashboardData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appUserId, appUserEmail]);
 
   const upsertHistoryEntry = (jobData, reportData, trackCount) => {
     const entry = toHistoryEntry(jobData, reportData, trackCount, direction);
@@ -656,6 +712,42 @@ function MigrationPage() {
     window.localStorage.removeItem(GOOGLE_ID_TOKEN_CACHE_KEY);
     setError(GOOGLE_REQUIRED_SCOPE_MESSAGE);
   }, [googleAccessToken, googleScope]);
+
+  const userLabel = dashboardOverview?.displayName || googleUser?.email || 'SoundBridge Guest';
+  const overviewStats = dashboardOverview
+    ? [
+        { label: 'Saved jobs', value: dashboardOverview.totalJobs },
+        { label: 'Completed', value: dashboardOverview.completedJobs },
+        { label: 'Failed', value: dashboardOverview.failedJobs },
+        { label: 'Connected services', value: dashboardOverview.connectedServices }
+      ]
+    : [
+        { label: 'Saved jobs', value: jobHistory.length },
+        { label: 'Completed', value: jobHistory.filter((entry) => entry.status === 'COMPLETED').length },
+        { label: 'Failed', value: jobHistory.filter((entry) => entry.status === 'FAILED').length },
+        { label: 'Connected services', value: 2 }
+      ];
+
+  const activeServices = dashboardServices.length
+    ? dashboardServices
+    : [
+        { service: 'Spotify', connected: Boolean(spotifyAccessToken), status: spotifyAccessToken ? 'Connected' : 'Disconnected', details: 'Private playlists and source access' },
+        { service: 'YouTube Music', connected: Boolean(googleAccessToken), status: googleAccessToken ? 'Connected' : 'Disconnected', details: 'Destination playlist export' }
+      ];
+
+  const activeLibrary = dashboardLibrary.length
+    ? dashboardLibrary
+    : jobHistory.slice(0, 8).map((entry) => ({
+        id: entry.id,
+        title: entry.sourcePlaylistUrl,
+        sourcePlatform: entry.direction === 'YOUTUBE_TO_SPOTIFY' ? 'YouTube Music' : 'Spotify',
+        targetPlatform: entry.direction === 'YOUTUBE_TO_SPOTIFY' ? 'Spotify' : 'YouTube Music',
+        tracks: entry.totalTracks,
+        status: entry.status,
+        updatedAt: entry.updatedAt,
+        sourcePlaylistUrl: entry.sourcePlaylistUrl,
+        targetPlaylistUrl: entry.targetPlaylistUrl
+      }));
 
   const handleRetryFailed = async () => {
     if (!job?.id || loading) {
@@ -929,7 +1021,133 @@ function MigrationPage() {
     exchangeCode();
   }, [googleClientId, googleRedirectUri]);
 
-  const historySection = (
+  const homeSection = (
+    <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr] xl:gap-8">
+      <motion.section
+        className="glass-card glass-card-hover p-5 md:p-7"
+        initial={{ opacity: 0, y: 22 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45 }}
+      >
+        <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+          <div className="max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Home</p>
+            <h1 className="mt-2 text-4xl font-black tracking-tight md:text-6xl">
+              <span className="gradient-heading">{userLabel}</span>
+            </h1>
+            <p className="mt-3 text-sm text-slate-300 md:text-base">
+              Manage playlists, run transfers, and review the latest migrations from one Soundiiz-style workspace.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 rounded-[24px] border border-white/10 bg-white/5 px-4 py-4 text-sm text-slate-300 md:min-w-[220px]">
+            <div className="flex items-center gap-2">
+              <span className="pulse-dot animate-glow-pulse" />
+              <span>{dashboardLoading ? 'Syncing workspace' : 'Workspace ready'}</span>
+            </div>
+            <p className="text-xs text-slate-400">Backend overview, library, and service state are linked to your account.</p>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {overviewStats.map((stat) => (
+            <div key={stat.label} className="stat-card">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">{stat.label}</p>
+              <p className="mt-2 text-3xl font-black text-white">{stat.value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          {[
+            { title: 'Transfer', description: 'Move playlists between Spotify and YouTube Music with preflight and retry support.', action: 'Open transfer', page: 'transfer' },
+            { title: 'Playlists', description: 'Browse recent migrations as playlist-style cards and inspect status quickly.', action: 'Open playlists', page: 'library' },
+            { title: 'Synchronize', description: 'Keep large collections aligned with automatic resume-friendly job history.', action: 'Open services', page: 'services' },
+            { title: 'Generate', description: 'Use guided flows and future automation for curated playlist generation.', action: 'Open plans', page: 'plans' }
+          ].map((card) => (
+            <button
+              key={card.title}
+              type="button"
+              onClick={() => setView(card.page)}
+              className="group rounded-[24px] border border-white/10 bg-white/5 p-5 text-left transition hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-white/8"
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300/80">{card.title}</p>
+              <p className="mt-3 text-sm text-slate-300">{card.description}</p>
+              <span className="mt-4 inline-flex text-sm font-semibold text-white transition group-hover:text-cyan-200">
+                {card.action} →
+              </span>
+            </button>
+          ))}
+        </div>
+      </motion.section>
+
+      <div className="grid gap-6">
+        <motion.section
+          className="glass-card glass-card-hover p-5 md:p-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-black text-white">Services</h2>
+              <p className="mt-1 text-sm text-slate-400">Connected platform status and what each service is for.</p>
+            </div>
+            <button type="button" onClick={() => setView('services')} className="glow-button-secondary text-xs">
+              View status
+            </button>
+          </div>
+          <div className="mt-4 grid gap-3">
+            {activeServices.map((service) => (
+              <div key={service.service} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-white">{service.service}</p>
+                    <p className="mt-1 text-xs text-slate-400">{service.details}</p>
+                  </div>
+                  <span className={`badge-status ${service.connected ? 'badge-matched' : 'badge-neutral'}`}>{service.status}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.section>
+
+        <motion.section
+          className="glass-card glass-card-hover p-5 md:p-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45 }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-black text-white">Recent playlists</h2>
+              <p className="mt-1 text-sm text-slate-400">Latest migration outputs displayed as a playlist library.</p>
+            </div>
+            <button type="button" onClick={() => setView('library')} className="glow-button-secondary text-xs">
+              Open library
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3">
+            {activeLibrary.slice(0, 5).map((item) => (
+              <article key={item.id} className="history-row">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-white">{item.title}</p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {item.sourcePlatform} → {item.targetPlatform} · {item.tracks} tracks
+                    </p>
+                  </div>
+                  <span className={`badge-status ${historyStatusClass(item.status)}`}>{item.status}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </motion.section>
+      </div>
+    </div>
+  );
+
+  const librarySection = (
     <motion.section
       className="glass-card glass-card-hover p-5 md:p-6"
       initial={{ opacity: 0, y: 20 }}
@@ -938,12 +1156,12 @@ function MigrationPage() {
     >
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Job History</p>
-          <h2 className="mt-2 text-2xl font-black text-white">Recent migrations</h2>
-          <p className="mt-1 text-sm text-slate-400">Stored locally so you can review recent runs without affecting the backend.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Playlists</p>
+          <h2 className="mt-2 text-2xl font-black text-white">Playlist library</h2>
+          <p className="mt-1 text-sm text-slate-400">Recent migrations displayed as Soundiiz-style library cards.</p>
         </div>
-        <button type="button" onClick={() => setView('dashboard')} className="glow-button-secondary self-start">
-          Back to dashboard
+        <button type="button" onClick={() => setView('home')} className="glow-button-secondary self-start">
+          Back to home
         </button>
       </div>
 
@@ -988,7 +1206,7 @@ function MigrationPage() {
     </motion.section>
   );
 
-  const dashboardSection = (
+  const transferSection = (
     <div className="grid gap-7 xl:grid-cols-[1.2fr_0.8fr] xl:gap-8">
       <motion.section
         className="glass-card glass-card-hover p-5 md:p-7"
@@ -1251,14 +1469,134 @@ function MigrationPage() {
     </div>
   );
 
+  const plansSection = (
+    <motion.section
+      className="glass-card glass-card-hover p-5 md:p-6"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Plans</p>
+          <h2 className="mt-2 text-2xl font-black text-white">Simple pricing</h2>
+          <p className="mt-1 text-sm text-slate-400">Temporary plan page for the Soundiiz-style shell.</p>
+        </div>
+        <button type="button" onClick={() => setView('transfer')} className="glow-button-secondary">
+          Start transfer
+        </button>
+      </div>
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+        {[
+          { name: 'Free', price: '$0', details: 'Try the transfer flow and preflight checks.' },
+          { name: 'Pro', price: '$9', details: 'For larger queues, retries, and saved history.' },
+          { name: 'Studio', price: '$19', details: 'For power users and future sync automation.' }
+        ].map((plan) => (
+          <article key={plan.name} className="rounded-[24px] border border-white/10 bg-white/5 p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300/80">{plan.name}</p>
+            <p className="mt-3 text-3xl font-black text-white">{plan.price}</p>
+            <p className="mt-3 text-sm text-slate-300">{plan.details}</p>
+          </article>
+        ))}
+      </div>
+    </motion.section>
+  );
+
+  const helpSection = (
+    <motion.section
+      className="glass-card glass-card-hover p-5 md:p-6"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+    >
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Help</p>
+        <h2 className="mt-2 text-2xl font-black text-white">Support shortcuts</h2>
+      </div>
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        {[
+          'Reconnect Spotify or Google if login expires.',
+          'Use preflight before every large transfer.',
+          'Retry issues after quota cool-downs or token refresh.',
+          'Check Services Status when a provider is slow.'
+        ].map((item) => (
+          <article key={item} className="rounded-[24px] border border-white/10 bg-white/5 p-5 text-sm text-slate-300">
+            {item}
+          </article>
+        ))}
+      </div>
+    </motion.section>
+  );
+
+  const servicesSection = (
+    <motion.section
+      className="glass-card glass-card-hover p-5 md:p-6"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Services Status</p>
+          <h2 className="mt-2 text-2xl font-black text-white">Platform connectivity</h2>
+        </div>
+        <button type="button" onClick={() => setView('home')} className="glow-button-secondary">
+          Back home
+        </button>
+      </div>
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        {activeServices.map((service) => (
+          <article key={service.service} className="rounded-[24px] border border-white/10 bg-white/5 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold text-white">{service.service}</p>
+                <p className="mt-1 text-xs text-slate-400">{service.details}</p>
+              </div>
+              <span className={`badge-status ${service.connected ? 'badge-matched' : 'badge-neutral'}`}>{service.status}</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    </motion.section>
+  );
+
+  const termsSection = (
+    <motion.section
+      className="glass-card glass-card-hover p-5 md:p-6"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+    >
+      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Terms</p>
+      <h2 className="mt-2 text-2xl font-black text-white">Temporary legal copy</h2>
+      <p className="mt-4 text-sm text-slate-300">
+        This section is a placeholder for the product shell you asked for. Replace it with your final legal content before release.
+      </p>
+    </motion.section>
+  );
+
+  const pageContent = {
+    home: homeSection,
+    transfer: transferSection,
+    library: librarySection,
+    plans: plansSection,
+    help: helpSection,
+    services: servicesSection,
+    terms: termsSection
+  }[view] || homeSection;
+
   return (
-    <main className="soft-grid mx-auto min-h-screen w-full max-w-7xl px-4 py-4 md:px-6 md:py-6">
+    <main className="soft-grid mx-auto min-h-screen w-full max-w-[1600px] px-4 py-4 md:px-6 md:py-6">
       <Navbar
         currentView={view}
         onViewChange={setView}
         theme={theme}
         onToggleTheme={() => setTheme((currentTheme) => (currentTheme === 'dark' ? 'light' : 'dark'))}
         jobCount={jobHistory.length}
+        userLabel={userLabel}
+        menuOpen={menuOpen}
+        onToggleMenu={() => setMenuOpen((current) => !current)}
+        navigationItems={navigationItems}
       />
 
       {error ? (
@@ -1271,13 +1609,57 @@ function MigrationPage() {
         </motion.section>
       ) : null}
 
-      {view === 'history' ? historySection : dashboardSection}
+      <div className="grid gap-6 xl:grid-cols-[280px_1fr]">
+        <aside className="glass-card glass-card-hover hidden min-h-[calc(100vh-140px)] flex-col p-4 xl:flex">
+          <div className="rounded-[24px] border border-white/10 bg-white/5 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Connected services</p>
+            <div className="mt-4 grid gap-3">
+              {activeServices.map((service) => (
+                <button
+                  key={service.service}
+                  type="button"
+                  onClick={() => setView(service.service === 'Spotify' ? 'transfer' : 'services')}
+                  className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-left transition hover:bg-white/10"
+                >
+                  <span className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl ${service.connected ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-500/15 text-slate-300'}`}>
+                    {service.service.slice(0, 1)}
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-white">{service.service}</p>
+                    <p className="text-xs text-slate-400">{service.status}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
 
-      {view === 'dashboard' ? (
-        <div className="mt-7">
-          <TrackTable tracks={visibleTracks} />
-        </div>
-      ) : null}
+          <div className="mt-4 rounded-[24px] border border-white/10 bg-white/5 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Tools</p>
+            <div className="mt-4 grid gap-2">
+              {['Home', 'Transfer', 'Playlists', 'Synchronize', 'Generate', 'Share'].map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setView(item.toLowerCase().includes('play') ? 'library' : item.toLowerCase() === 'home' ? 'home' : item.toLowerCase() === 'transfer' ? 'transfer' : item.toLowerCase() === 'synchronize' ? 'services' : item.toLowerCase() === 'share' ? 'help' : 'plans')}
+                  className="rounded-2xl px-3 py-2 text-left text-sm font-semibold text-slate-300 transition hover:bg-white/8 hover:text-white"
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        <section className="grid gap-6">
+          {pageContent}
+
+          {view === 'transfer' ? (
+            <div className="mt-1">
+              <TrackTable tracks={visibleTracks} />
+            </div>
+          ) : null}
+        </section>
+      </div>
     </main>
   );
 }

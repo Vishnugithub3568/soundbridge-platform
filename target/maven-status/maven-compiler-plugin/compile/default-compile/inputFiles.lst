@@ -7,8 +7,12 @@ E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\client\YouT
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\config\AsyncConfig.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\config\WebConfig.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\controller\AuthController.java
+E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\controller\DashboardController.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\controller\MigrationController.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\CreateMigrationRequest.java
+E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\DashboardLibraryItemResponse.java
+E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\DashboardOverviewResponse.java
+E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\DashboardServiceStatusResponse.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\GoogleTokenExchangeRequest.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\MigrationJobResponse.java
 E:\Project Folder\soundbridge-platform\src\main\java\com\soundbridge\dto\MigrationPreflightRequest.java

@@ -1,23 +1,55 @@
 import { motion } from 'framer-motion';
 
-function Navbar({ currentView, onViewChange, theme, onToggleTheme, jobCount }) {
+function Navbar({
+  currentView,
+  onViewChange,
+  theme,
+  onToggleTheme,
+  jobCount,
+  userLabel,
+  menuOpen,
+  onToggleMenu,
+  navigationItems = []
+}) {
   const isDarkMode = theme === 'dark';
 
   return (
     <motion.nav
-      className="sticky top-0 z-40 mb-6 rounded-[28px] border border-white/10 bg-slate-950/70 px-4 py-3 backdrop-blur-xl md:px-6"
+      className="sticky top-0 z-40 mb-6 rounded-[28px] border border-white/10 bg-slate-950/80 px-4 py-3 backdrop-blur-xl md:px-6"
       initial={{ opacity: 0, y: -16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
     >
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <button
-          type="button"
-          onClick={() => onViewChange('dashboard')}
-          className="flex items-center gap-3 text-left"
-        >
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 via-sky-500 to-indigo-600 shadow-[0_0_28px_rgba(56,189,248,0.35)]">
-            <span className="text-lg font-black text-white">S</span>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={onToggleMenu}
+              className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-400 via-sky-500 to-indigo-600 text-lg font-black text-white shadow-[0_0_28px_rgba(56,189,248,0.35)]"
+              aria-label="Open navigation menu"
+            >
+              S
+            </button>
+            {menuOpen ? (
+              <div className="absolute left-0 top-14 z-50 w-52 rounded-3xl border border-white/10 bg-slate-900/95 p-3 shadow-[0_30px_80px_rgba(2,6,23,0.65)] backdrop-blur-xl">
+                <div className="mb-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Navigation
+                </div>
+                <div className="grid gap-1">
+                  {navigationItems.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => onViewChange(item.toLowerCase().includes('service') ? 'services' : item.toLowerCase().includes('plan') ? 'plans' : item.toLowerCase().includes('term') ? 'terms' : item.toLowerCase().includes('help') ? 'help' : 'home')}
+                      className="rounded-2xl px-3 py-2 text-left text-sm font-semibold text-slate-200 transition hover:bg-white/8 hover:text-white"
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
           <div>
             <p className="bg-gradient-to-r from-cyan-300 via-sky-200 to-fuchsia-300 bg-clip-text text-xl font-black tracking-tight text-transparent">
@@ -25,34 +57,29 @@ function Navbar({ currentView, onViewChange, theme, onToggleTheme, jobCount }) {
             </p>
             <p className="text-xs text-slate-400">Modern playlist migration dashboard</p>
           </div>
-        </button>
+        </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onViewChange('dashboard')}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-              currentView === 'dashboard'
-                ? 'bg-white/12 text-white shadow-[0_0_24px_rgba(56,189,248,0.22)]'
-                : 'text-slate-300 hover:bg-white/8 hover:text-white'
-            }`}
-          >
-            Dashboard
-          </button>
-          <button
-            type="button"
-            onClick={() => onViewChange('history')}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-              currentView === 'history'
-                ? 'bg-white/12 text-white shadow-[0_0_24px_rgba(168,85,247,0.22)]'
-                : 'text-slate-300 hover:bg-white/8 hover:text-white'
-            }`}
-          >
-            Job History
-          </button>
+          {['home', 'transfer', 'library'].map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => onViewChange(item)}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                currentView === item
+                  ? 'bg-white/12 text-white shadow-[0_0_24px_rgba(56,189,248,0.22)]'
+                  : 'text-slate-300 hover:bg-white/8 hover:text-white'
+              }`}
+            >
+              {item === 'home' ? 'Home' : item === 'transfer' ? 'Transfer' : 'Playlists'}
+            </button>
+          ))}
           <div className="hidden h-8 w-px bg-white/10 md:block" />
           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-300">
             {jobCount} saved jobs
+          </span>
+          <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200">
+            {userLabel || 'Guest'}
           </span>
           <button
             type="button"
