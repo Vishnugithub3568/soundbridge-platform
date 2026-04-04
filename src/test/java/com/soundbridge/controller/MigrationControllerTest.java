@@ -1,6 +1,7 @@
 package com.soundbridge.controller;
 
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.when;
@@ -10,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.soundbridge.dto.MigrationJobResponse;
+import com.soundbridge.dto.CreateMigrationRequest;
 import com.soundbridge.dto.MigrationReportResponse;
 import com.soundbridge.dto.MigrationTrackResponse;
 import com.soundbridge.model.JobStatus;
@@ -40,6 +42,7 @@ class MigrationControllerTest {
         UUID jobId = UUID.randomUUID();
         MigrationJobResponse response = new MigrationJobResponse(
             jobId,
+            null,
             "https://open.spotify.com/playlist/abc",
             "YOUTUBE_MUSIC",
             null,
@@ -52,7 +55,7 @@ class MigrationControllerTest {
             Instant.now()
         );
 
-        when(migrationService.startMigration(anyString(), nullable(String.class), nullable(String.class))).thenReturn(response);
+        when(migrationService.startMigration(any(CreateMigrationRequest.class))).thenReturn(response);
 
         mockMvc.perform(post("/migrate")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -68,6 +71,7 @@ class MigrationControllerTest {
 
         when(migrationService.getJob(eq(jobId))).thenReturn(new MigrationJobResponse(
             jobId,
+            null,
             "https://open.spotify.com/playlist/abc",
             "YOUTUBE_MUSIC",
             null,

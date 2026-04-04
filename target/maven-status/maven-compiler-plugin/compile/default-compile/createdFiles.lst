@@ -18,7 +18,9 @@ com\soundbridge\client\YouTubeMusicClient$PlaylistEntry.class
 com\soundbridge\service\GoogleOAuthService.class
 com\soundbridge\client\YouTubeMusicClient$VideoDetails.class
 com\soundbridge\model\TrackMatchStatus.class
+com\soundbridge\dto\MigrationPreflightRequest.class
 com\soundbridge\dto\MigrationTrackResponse.class
+com\soundbridge\dto\MigrationPreflightResponse.class
 com\soundbridge\client\SpotifyClient$SpotifySearchCandidate.class
 com\soundbridge\model\JobStatus.class
 com\soundbridge\service\MigrationAsyncProcessor$ScoredCandidate.class
