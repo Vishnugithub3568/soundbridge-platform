@@ -6,10 +6,12 @@ import TrackTable from '../components/TrackTable';
 import {
   exchangeGoogleCode,
   getMigrationJob,
+  getMigrationHistory,
   getMigrationReport,
   getMigrationTracks,
   preflightMigration,
   retryFailedTracks,
+  syncUserProfile,
   startMigration
 } from '../services/apiService';
 
@@ -34,6 +36,85 @@ const GOOGLE_REQUIRED_SCOPE_MESSAGE =
   'Google token is missing YouTube permission. Reconnect Google and approve YouTube access.';
 const THEME_CACHE_KEY = 'soundbridge_theme';
 const JOB_HISTORY_CACHE_KEY = 'soundbridge_job_history';
+const APP_USER_ID_CACHE_KEY = 'soundbridge_app_user_id';
+
+function randomHex(length) {
+  const bytes = new Uint8Array(Math.ceil(length / 2));
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('')
+    .slice(0, length);
+}
+
+function randomUuid() {
+  return `${randomHex(8)}-${randomHex(4)}-4${randomHex(3)}-a${randomHex(3)}-${randomHex(12)}`;
+}
+
+function readOrCreateGuestUserId() {
+  try {
+    const cached = String(window.localStorage.getItem(APP_USER_ID_CACHE_KEY) || '').trim();
+    if (cached) {
+      return cached;
+    }
+
+    const generated = randomUuid();
+    window.localStorage.setItem(APP_USER_ID_CACHE_KEY, generated);
+    return generated;
+  } catch {
+    return randomUuid();
+  }
+}
+
+function hashToUuid(input) {
+  const value = String(input || '').trim().toLowerCase();
+  if (!value) {
+    return '';
+  }
+
+  let hashA = 0x811c9dc5;
+  let hashB = 0x01000193;
+  let hashC = 0x9e3779b9;
+  let hashD = 0x85ebca6b;
+
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    hashA = Math.imul(hashA ^ code, 0x01000193) >>> 0;
+    hashB = Math.imul(hashB ^ code, 0x85ebca6b) >>> 0;
+    hashC = Math.imul(hashC ^ code, 0xc2b2ae35) >>> 0;
+    hashD = Math.imul(hashD ^ code, 0x27d4eb2f) >>> 0;
+  }
+
+  const hex = [hashA, hashB, hashC, hashD]
+    .map((part) => part.toString(16).padStart(8, '0'))
+    .join('');
+
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+function directionFromTargetPlatform(targetPlatform) {
+  return String(targetPlatform || '').toUpperCase() === 'SPOTIFY' ? 'YOUTUBE_TO_SPOTIFY' : 'SPOTIFY_TO_YOUTUBE';
+}
+
+function toHistoryEntry(jobData, reportData, trackCount, fallbackDirection) {
+  if (!jobData?.id) {
+    return null;
+  }
+
+  return {
+    id: jobData.id,
+    status: jobData.status,
+    direction: directionFromTargetPlatform(jobData.targetPlatform) || fallbackDirection || 'SPOTIFY_TO_YOUTUBE',
+    sourcePlaylistUrl: jobData.sourcePlaylistUrl,
+    targetPlatform: jobData.targetPlatform,
+    targetPlaylistUrl: jobData.targetPlaylistUrl,
+    totalTracks: jobData.totalTracks ?? trackCount ?? 0,
+    matchedTracks: jobData.matchedTracks ?? 0,
+    failedTracks: jobData.failedTracks ?? 0,
+    matchRate: reportData?.matchRate ?? 0,
+    updatedAt: jobData.updatedAt || new Date().toISOString()
+  };
+}
 
 function readThemePreference() {
   try {
@@ -277,6 +358,13 @@ function MigrationPage() {
   const [googleAccessToken, setGoogleAccessToken] = useState(() => readCachedGoogleToken().token);
   const [googleScope, setGoogleScope] = useState(() => readCachedGoogleToken().scope);
   const [googleUser, setGoogleUser] = useState(null);
+  const [appUserId, setAppUserId] = useState(() => readOrCreateGuestUserId());
+  const [appUserEmail, setAppUserEmail] = useState(() => {
+    const guestId = readOrCreateGuestUserId();
+    return `guest+${guestId}@local.soundbridge`;
+  });
+  const [appUserDisplayName, setAppUserDisplayName] = useState('SoundBridge Guest');
+  const [userSynced, setUserSynced] = useState(false);
   const [job, setJob] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [report, setReport] = useState(null);
@@ -367,29 +455,75 @@ function MigrationPage() {
   }, [jobHistory]);
 
   const upsertHistoryEntry = (jobData, reportData, trackCount) => {
-    if (!jobData?.id) {
+    const entry = toHistoryEntry(jobData, reportData, trackCount, direction);
+    if (!entry) {
       return;
     }
-
-    const entry = {
-      id: jobData.id,
-      status: jobData.status,
-      direction,
-      sourcePlaylistUrl: jobData.sourcePlaylistUrl,
-      targetPlatform: jobData.targetPlatform,
-      targetPlaylistUrl: jobData.targetPlaylistUrl,
-      totalTracks: jobData.totalTracks ?? trackCount ?? 0,
-      matchedTracks: jobData.matchedTracks ?? 0,
-      failedTracks: jobData.failedTracks ?? 0,
-      matchRate: reportData?.matchRate ?? 0,
-      updatedAt: jobData.updatedAt || new Date().toISOString()
-    };
 
     setJobHistory((currentHistory) => {
       const nextHistory = [entry, ...currentHistory.filter((item) => item.id !== jobData.id)];
       return nextHistory.slice(0, 12);
     });
   };
+
+  const loadJobHistoryFromServer = async (userId) => {
+    const historyJobs = await getMigrationHistory(userId, 20);
+    const mapped = historyJobs
+      .map((jobData) => toHistoryEntry(jobData, null, jobData?.totalTracks || 0, direction))
+      .filter(Boolean);
+
+    if (mapped.length) {
+      setJobHistory(mapped);
+    }
+  };
+
+  useEffect(() => {
+    const email = String(googleUser?.email || '').trim().toLowerCase();
+    if (email) {
+      const derivedUserId = hashToUuid(email);
+      setAppUserId(derivedUserId || readOrCreateGuestUserId());
+      setAppUserEmail(email);
+      setAppUserDisplayName(String(googleUser?.name || googleUser?.email || 'SoundBridge User'));
+      return;
+    }
+
+    const guestId = readOrCreateGuestUserId();
+    setAppUserId(guestId);
+    setAppUserEmail(`guest+${guestId}@local.soundbridge`);
+    setAppUserDisplayName('SoundBridge Guest');
+  }, [googleUser?.email, googleUser?.name]);
+
+  useEffect(() => {
+    if (!appUserId || !appUserEmail) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const syncAndLoad = async () => {
+      try {
+        await syncUserProfile(appUserId, appUserEmail, appUserDisplayName);
+        if (cancelled) {
+          return;
+        }
+
+        setUserSynced(true);
+        await loadJobHistoryFromServer(appUserId);
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        setUserSynced(false);
+      }
+    };
+
+    syncAndLoad();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appUserId, appUserEmail, appUserDisplayName]);
 
   const refreshJobData = async (jobId) => {
     const [jobData, tracksData, reportData] = await Promise.all([
@@ -438,7 +572,13 @@ function MigrationPage() {
     setReport(null);
 
     try {
-      const createdJob = await startMigration(playlistUrl.trim(), spotifyAccessToken, googleAccessToken, direction);
+      const createdJob = await startMigration(
+        playlistUrl.trim(),
+        spotifyAccessToken,
+        googleAccessToken,
+        direction,
+        userSynced ? appUserId : ''
+      );
       setJob(createdJob);
       upsertHistoryEntry(createdJob, null, 0);
       await refreshJobData(createdJob.id);

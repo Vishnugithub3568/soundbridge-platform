@@ -25,6 +25,7 @@ mvn clean package -DskipTests
 - `GET /health`
 - `POST /migrate`
 - `POST /migrate/preflight`
+- `GET /migrate/history?userId=<uuid>&limit=20`
 - `GET /migrate/{jobId}`
 - `GET /migrate/{jobId}/tracks`
 - `GET /migrate/{jobId}/report`

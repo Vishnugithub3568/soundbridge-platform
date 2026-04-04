@@ -47,7 +47,13 @@ api.interceptors.response.use(
   }
 );
 
-export async function startMigration(sourcePlaylistUrl, spotifyAccessToken, googleAccessToken, direction = 'SPOTIFY_TO_YOUTUBE') {
+export async function startMigration(
+  sourcePlaylistUrl,
+  spotifyAccessToken,
+  googleAccessToken,
+  direction = 'SPOTIFY_TO_YOUTUBE',
+  userId = ''
+) {
   const payload = {
     sourcePlaylistUrl,
     direction
@@ -57,6 +63,9 @@ export async function startMigration(sourcePlaylistUrl, spotifyAccessToken, goog
   }
   if (googleAccessToken && googleAccessToken.trim()) {
     payload.googleAccessToken = googleAccessToken.trim();
+  }
+  if (userId && String(userId).trim()) {
+    payload.userId = String(userId).trim();
   }
 
   const response = await api.post('/migrate', payload);
@@ -100,11 +109,35 @@ export async function retryFailedTracks(jobId) {
   return response.data;
 }
 
+export async function getMigrationHistory(userId, limit = 20) {
+  const normalizedUserId = String(userId || '').trim();
+  if (!normalizedUserId) {
+    return [];
+  }
+
+  const response = await api.get('/migrate/history', {
+    params: {
+      userId: normalizedUserId,
+      limit
+    }
+  });
+  return Array.isArray(response.data) ? response.data : [];
+}
+
 export async function exchangeGoogleCode(code, redirectUri, codeVerifier) {
   const response = await api.post('/auth/google/token', {
     code,
     redirectUri,
     codeVerifier
+  });
+  return response.data;
+}
+
+export async function syncUserProfile(userId, email, displayName = '') {
+  const response = await api.post('/auth/sync-user', {
+    userId,
+    email,
+    displayName
   });
   return response.data;
 }

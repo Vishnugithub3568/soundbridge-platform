@@ -8,6 +8,7 @@ import java.util.UUID;
 
 public record MigrationJobResponse(
     UUID id,
+    UUID userId,
     String sourcePlaylistUrl,
     String targetPlatform,
     String targetPlaylistId,
@@ -23,6 +24,7 @@ public record MigrationJobResponse(
         Objects.requireNonNull(job, "job must not be null");
         return new MigrationJobResponse(
             job.getId(),
+            job.getUserId(),
             job.getSourcePlaylistUrl(),
             job.getTargetPlatform(),
             job.getTargetPlaylistId(),

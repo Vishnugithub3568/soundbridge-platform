@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.context.ApplicationContext;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -168,6 +169,7 @@ public class MigrationService {
         job.setSourcePlaylistUrl(spotifyPlaylistUrl);
         job.setSpotifyAccessToken(spotifyAccessToken.isEmpty() ? null : spotifyAccessToken);
         job.setGoogleAccessToken(googleAccessToken.isEmpty() ? null : googleAccessToken);
+        job.setUserId(request.getUserId());
         job.setTargetPlatform("YOUTUBE_MUSIC");
         job.setStatus(JobStatus.QUEUED);
         job.setTotalTracks(0);
@@ -207,6 +209,7 @@ public class MigrationService {
         job.setSourcePlaylistUrl(youtubePlaylistUrl);
         job.setSpotifyAccessToken(spotifyAccessToken);
         job.setGoogleAccessToken(googleAccessToken);
+        job.setUserId(request.getUserId());
         job.setTargetPlatform("SPOTIFY");
         job.setStatus(JobStatus.QUEUED);
         job.setTotalTracks(0);
@@ -275,6 +278,15 @@ public class MigrationService {
         jobRepository.saveAndFlush(job);
         applicationContext.getBean(MigrationService.class).retryFailedTracksAsync(jobId);
         return MigrationJobResponse.from(job);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MigrationJobResponse> getJobHistory(UUID userId, int limit) {
+        int normalizedLimit = Math.max(1, Math.min(100, limit));
+        return jobRepository.findByUserIdOrderByUpdatedAtDesc(userId, PageRequest.of(0, normalizedLimit))
+            .stream()
+            .map(MigrationJobResponse::from)
+            .toList();
     }
 
     @Async("migrationTaskExecutor")

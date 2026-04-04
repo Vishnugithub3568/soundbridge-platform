@@ -46,9 +46,18 @@ Build a Soundiiz-like migration experience for playlist transfer between Spotify
   - temporary network/API issues
 - Frontend retry UX now shows retryable issue breakdown and total retry count.
 
+### Phase 3 implementation completed
+- Backend now persists and serves user-scoped history:
+  - Jobs store userId.
+  - New endpoint: GET /migrate/history?userId=<uuid>&limit=<n>
+- Frontend now syncs a user profile and loads history from backend first.
+- Local history cache remains as fallback if history API is unavailable.
+
 ## In-Scope Roadmap (Next Work)
 
 ## Phase 3: Server-Side Job History (Priority: High)
+Status: Completed on 2026-04-04
+
 ### Problem
 Current history is local/browser-scoped, not account-scoped. Users lose continuity across devices/browsers.
 

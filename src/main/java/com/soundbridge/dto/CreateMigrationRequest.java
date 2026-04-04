@@ -1,6 +1,7 @@
 package com.soundbridge.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import java.util.UUID;
 
 /**
  * Request to start a bidirectional migration between Spotify and YouTube Music.
@@ -16,6 +17,8 @@ public class CreateMigrationRequest {
     private String spotifyAccessToken;
 
     private String googleAccessToken;
+
+    private UUID userId;
 
     // Legacy field support - maps to sourcePlaylistUrl
     public String getSpotifyPlaylistUrl() {
@@ -56,6 +59,14 @@ public class CreateMigrationRequest {
 
     public void setGoogleAccessToken(String googleAccessToken) {
         this.googleAccessToken = googleAccessToken;
+    }
+
+    public UUID getUserId() {
+        return userId;
+    }
+
+    public void setUserId(UUID userId) {
+        this.userId = userId;
     }
 
     public boolean isSpotifyToYouTube() {

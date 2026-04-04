@@ -34,6 +34,9 @@ public class MigrationJob {
     @Column(name = "target_playlist_url", length = 2048)
     private String targetPlaylistUrl;
 
+    @Column(name = "user_id")
+    private UUID userId;
+
     @Column(name = "target_platform", nullable = false)
     private String targetPlatform = "YOUTUBE_MUSIC";
 
@@ -131,6 +134,14 @@ public class MigrationJob {
 
     public void setTargetPlaylistUrl(String targetPlaylistUrl) {
         this.targetPlaylistUrl = targetPlaylistUrl;
+    }
+
+    public UUID getUserId() {
+        return userId;
+    }
+
+    public void setUserId(UUID userId) {
+        this.userId = userId;
     }
 
     public JobStatus getStatus() {

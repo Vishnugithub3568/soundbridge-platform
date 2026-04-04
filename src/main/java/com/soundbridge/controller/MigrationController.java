@@ -16,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -59,6 +60,14 @@ public class MigrationController {
     @GetMapping("/migrate/{jobId}/report")
     public MigrationReportResponse getMigrationReport(@PathVariable UUID jobId) {
         return migrationService.getReport(jobId);
+    }
+
+    @GetMapping("/migrate/history")
+    public List<MigrationJobResponse> getMigrationHistory(
+        @RequestParam UUID userId,
+        @RequestParam(defaultValue = "20") int limit
+    ) {
+        return migrationService.getJobHistory(userId, limit);
     }
 
     @PostMapping("/migrate/{jobId}/retry-failed")
