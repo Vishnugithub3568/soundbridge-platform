@@ -812,6 +812,14 @@ public class MigrationAsyncProcessor {
         }
 
         if (
+            normalized.contains("non-json content")
+                || normalized.contains("httpmessageconverter")
+                || normalized.contains("text/html")
+        ) {
+            return "Spotify returned an unexpected web page instead of API data. Reconnect Spotify and verify backend SPOTIFY_API_BASE_URL is https://api.spotify.com/v1.";
+        }
+
+        if (
             normalized.contains("timeout")
                 || normalized.contains("timed out")
                 || normalized.contains("connection")

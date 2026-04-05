@@ -22,7 +22,6 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -261,12 +260,12 @@ public class SpotifyClient {
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        ResponseEntity<JsonNode> response = executeWithRetry(
+        JsonNode payload = exchangeForJson(
             "spotify-create-playlist",
-            () -> restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class)
+            url,
+            HttpMethod.POST,
+            new HttpEntity<>(body, headers)
         );
-
-        JsonNode payload = response.getBody();
         String playlistId = payload == null ? "" : payload.path("id").asText("");
         if (playlistId.isBlank()) {
             throw new IllegalStateException("Spotify playlist creation response did not include id");
@@ -299,9 +298,11 @@ public class SpotifyClient {
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        executeWithRetry(
+        exchangeForJson(
             "spotify-add-playlist-track",
-            () -> restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class)
+            url,
+            HttpMethod.POST,
+            new HttpEntity<>(body, headers)
         );
     }
 
@@ -448,15 +449,11 @@ public class SpotifyClient {
     }
 
     private JsonNode getAuthorizedJson(String url, String spotifyUserAccessToken) {
-        return executeWithRetry("spotify-playlist-tracks", () -> {
-            HttpHeaders headers = new HttpHeaders();
-            String userToken = spotifyUserAccessToken == null ? "" : spotifyUserAccessToken.trim();
-            headers.setBearerAuth(userToken.isEmpty() ? getAccessToken() : userToken);
-            HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
-
-            ResponseEntity<JsonNode> response = restTemplate.exchange(url, HttpMethod.GET, requestEntity, JsonNode.class);
-            return Objects.requireNonNull(response.getBody(), "Spotify API returned empty response body");
-        });
+        HttpHeaders headers = new HttpHeaders();
+        String userToken = spotifyUserAccessToken == null ? "" : spotifyUserAccessToken.trim();
+        headers.setBearerAuth(userToken.isEmpty() ? getAccessToken() : userToken);
+        HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
+        return exchangeForJson("spotify-playlist-tracks", url, HttpMethod.GET, requestEntity);
     }
 
     private synchronized String getAccessToken() {
@@ -485,11 +482,7 @@ public class SpotifyClient {
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(form, headers);
         String tokenUrl = accountsBaseUrl + "/api/token";
 
-        ResponseEntity<JsonNode> response = executeWithRetry(
-            "spotify-token",
-            () -> restTemplate.exchange(tokenUrl, HttpMethod.POST, request, JsonNode.class)
-        );
-        JsonNode body = Objects.requireNonNull(response.getBody(), "Spotify token response is empty");
+        JsonNode body = exchangeForJson("spotify-token", tokenUrl, HttpMethod.POST, request);
 
         String accessToken = body.path("access_token").asText("");
         long expiresIn = body.path("expires_in").asLong(3600L);
@@ -505,6 +498,43 @@ public class SpotifyClient {
     private synchronized void clearCachedAccessToken() {
         cachedAccessToken = null;
         cachedAccessTokenExpiry = Instant.EPOCH;
+    }
+
+    private JsonNode exchangeForJson(String operationName, String url, HttpMethod method, HttpEntity<?> requestEntity) {
+        return executeWithRetry(operationName, () -> {
+            var response = restTemplate.exchange(url, method, requestEntity, String.class);
+            String payload = Objects.requireNonNullElse(response.getBody(), "").trim();
+            MediaType contentType = response.getHeaders().getContentType();
+
+            if (payload.isBlank()) {
+                throw new IllegalStateException("Spotify API returned empty response body");
+            }
+
+            if (!isJsonPayload(contentType, payload)) {
+                String type = contentType == null ? "unknown" : contentType.toString();
+                throw new IllegalStateException(
+                    "Spotify API returned non-JSON content (" + type + ")."
+                        + " Verify SPOTIFY_API_BASE_URL and reconnect Spotify."
+                );
+            }
+
+            try {
+                return objectMapper.readTree(payload);
+            } catch (Exception ex) {
+                throw new IllegalStateException("Spotify API returned malformed JSON payload", ex);
+            }
+        });
+    }
+
+    private boolean isJsonPayload(MediaType contentType, String payload) {
+        if (contentType != null) {
+            String subtype = Objects.requireNonNullElse(contentType.getSubtype(), "").toLowerCase();
+            if (subtype.contains("json")) {
+                return true;
+            }
+        }
+
+        return payload.startsWith("{") || payload.startsWith("[");
     }
 
     private <T> T executeWithRetry(String operationName, Supplier<T> apiCall) {
