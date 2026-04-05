@@ -2,6 +2,7 @@
 
 ## Document Status
 - Created: 2026-04-04
+- Last updated: 2026-04-05
 - Purpose: Continuity document for active build phase so implementation can resume even if chat history is lost.
 - Lifecycle: Temporary.
 - Delete after: Final completion + production validation + handoff.
@@ -19,6 +20,21 @@ Build a Soundiiz-like migration experience for playlist transfer between Spotify
 - Production-ready deploy flow on Render (backend) + Vercel (frontend)
 
 ## Current State (Already Completed)
+### 2026-04-05 verification and DB hardening
+- Added reusable Supabase hardening SQL script:
+  - `supabase-migration-2026-04-05-fk-hardening.sql`
+- Confirmed DB integrity checks in Supabase:
+  - `null_ids = 0`
+  - duplicate migration job IDs = none
+  - `orphan_tracks = 0`
+- Completed backend API smoke verification locally:
+  - `GET /health` => 200
+  - `GET /diagnose` => 200
+  - `GET /migrate/history` => 200
+  - `POST /migrate/preflight` => 200
+- Added reusable smoke script:
+  - `scripts/deploy-smoke-check.ps1`
+
 ### Deployment and env setup
 - Frontend deployed on Vercel.
 - Backend deployed on Render.
@@ -54,6 +70,13 @@ Build a Soundiiz-like migration experience for playlist transfer between Spotify
 - Local history cache remains as fallback if history API is unavailable.
 
 ## In-Scope Roadmap (Next Work)
+
+### Current Phase Snapshot (as of 2026-04-05)
+- Phase 3: Completed
+- Phase 4: In progress
+- Phase 5: Pending
+- Phase 6: In progress (Step 1 completed)
+- Phase 7: Pending
 
 ## Phase 3: Server-Side Job History (Priority: High)
 Status: Completed on 2026-04-04
@@ -121,7 +144,7 @@ Some fallback or low-confidence matches are acceptable but still noisy.
 - Increase production resilience and observability.
 
 ### Implementation Steps
-1. Add deploy smoke checks script (health + migrate/preflight sanity).
+1. Add deploy smoke checks script (health + migrate/preflight sanity). ✅ Completed on 2026-04-05 (`scripts/deploy-smoke-check.ps1`)
 2. Add structured logs for key migration stages.
 3. Add runtime safeguards for rate-limit heavy loops.
 4. Add basic dashboard telemetry counters (if desired).

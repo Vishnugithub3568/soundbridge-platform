@@ -20,6 +20,20 @@ Backend URL: `http://localhost:9000`
 mvn clean package -DskipTests
 ```
 
+### Smoke Check (PowerShell)
+
+Run a quick backend verification after restart/deploy:
+
+```powershell
+./scripts/deploy-smoke-check.ps1
+```
+
+Optional parameters:
+
+```powershell
+./scripts/deploy-smoke-check.ps1 -BaseUrl "https://your-backend-domain" -UserId "11111111-1111-1111-1111-111111111111"
+```
+
 ### Endpoints
 
 - `GET /health`
