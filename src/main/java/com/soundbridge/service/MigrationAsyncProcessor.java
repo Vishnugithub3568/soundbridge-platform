@@ -22,6 +22,7 @@ import com.soundbridge.repository.MigrationTrackRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -56,6 +57,8 @@ public class MigrationAsyncProcessor {
     private static final Pattern NOISE_TERMS_PATTERN = Pattern.compile(
         "\\b(official|video|audio|lyrics?|lyric|version|remaster(ed)?|mono|stereo|topic|hq|hd)\\b"
     );
+    private static final int MAX_TRACK_SLEEP_MS = 5_000;
+    private static final int MAX_ADAPTIVE_COOLDOWN_MS = 20_000;
 
     private final MigrationJobRepository jobRepository;
     private final MigrationTrackRepository trackRepository;
@@ -71,6 +74,11 @@ public class MigrationAsyncProcessor {
     private final double indicatorMismatchPenalty;
     private final double indicatorMatchBonus;
     private final double artistTitleCrossWeight;
+    private final long perTrackDelayMs;
+    private final int adaptiveCooldownAfterSignals;
+    private final long adaptiveCooldownMs;
+    private final long checkpointCooldownMs;
+    private final int checkpointCooldownEveryTracks;
 
     @Autowired
     public MigrationAsyncProcessor(
@@ -87,7 +95,12 @@ public class MigrationAsyncProcessor {
         @Value("${youtube.match.artist.weight:0.38}") double configuredArtistWeight,
         @Value("${youtube.match.indicator.mismatch.penalty:0.18}") double indicatorMismatchPenalty,
         @Value("${youtube.match.indicator.match.bonus:0.04}") double indicatorMatchBonus,
-        @Value("${youtube.match.artist.title.cross-weight:0.55}") double artistTitleCrossWeight
+        @Value("${youtube.match.artist.title.cross-weight:0.55}") double artistTitleCrossWeight,
+        @Value("${migration.loop.per-track-delay-ms:150}") long perTrackDelayMs,
+        @Value("${migration.loop.adaptive-cooldown-signal-threshold:3}") int adaptiveCooldownAfterSignals,
+        @Value("${migration.loop.adaptive-cooldown-ms:1800}") long adaptiveCooldownMs,
+        @Value("${migration.loop.checkpoint-cooldown-ms:1000}") long checkpointCooldownMs,
+        @Value("${migration.loop.checkpoint-cooldown-every-tracks:25}") int checkpointCooldownEveryTracks
     ) {
         this.jobRepository = jobRepository;
         this.trackRepository = trackRepository;
@@ -111,6 +124,11 @@ public class MigrationAsyncProcessor {
         this.indicatorMismatchPenalty = Math.max(0.0, indicatorMismatchPenalty);
         this.indicatorMatchBonus = Math.max(0.0, indicatorMatchBonus);
         this.artistTitleCrossWeight = clamp(artistTitleCrossWeight);
+        this.perTrackDelayMs = Math.max(0L, Math.min(MAX_TRACK_SLEEP_MS, perTrackDelayMs));
+        this.adaptiveCooldownAfterSignals = Math.max(1, adaptiveCooldownAfterSignals);
+        this.adaptiveCooldownMs = Math.max(0L, Math.min(MAX_ADAPTIVE_COOLDOWN_MS, adaptiveCooldownMs));
+        this.checkpointCooldownMs = Math.max(0L, Math.min(MAX_ADAPTIVE_COOLDOWN_MS, checkpointCooldownMs));
+        this.checkpointCooldownEveryTracks = Math.max(1, checkpointCooldownEveryTracks);
     }
 
     public MigrationAsyncProcessor(
@@ -135,7 +153,12 @@ public class MigrationAsyncProcessor {
             0.38,
             0.18,
             0.04,
-            0.55
+            0.55,
+            150,
+            3,
+            1800,
+            1000,
+            25
         );
     }
 
@@ -214,6 +237,7 @@ public class MigrationAsyncProcessor {
             }
             jobRepository.saveAndFlush(job);
 
+            int rateLimitSignals = 0;
             for (int batchStart = startIndex; batchStart < sourceTracks.size(); batchStart += BATCH_SIZE) {
                 int batchEnd = Math.min(sourceTracks.size(), batchStart + BATCH_SIZE);
                 log.info(
@@ -264,12 +288,13 @@ public class MigrationAsyncProcessor {
                     job.setLastProcessedIndex(trackIndex + 1);
                     jobRepository.saveAndFlush(job);
 
-                    try {
-                        Thread.sleep(150);
-                    } catch (InterruptedException interruptedException) {
-                        Thread.currentThread().interrupt();
-                        throw new IllegalStateException("Migration processing interrupted", interruptedException);
+                    if (isRateLimitSignal(migrationTrack)) {
+                        rateLimitSignals++;
+                    } else {
+                        rateLimitSignals = 0;
                     }
+
+                    throttleLoop(jobId, trackIndex - startIndex + 1, rateLimitSignals);
                 }
             }
 
@@ -372,10 +397,13 @@ public class MigrationAsyncProcessor {
             }
 
             List<MigrationTrack> allTracks = new ArrayList<>(trackRepository.findByJobIdOrderByIdAsc(jobId));
+            int processedRetryTracks = 0;
+            int rateLimitSignals = 0;
             for (MigrationTrack track : allTracks) {
                 if (!isRetryableTrackStatus(track.getMatchStatus())) {
                     continue;
                 }
+                processedRetryTracks++;
 
                 SpotifyTrack sourceTrack = new SpotifyTrack(
                     Objects.requireNonNullElse(track.getSourceTrackName(), ""),
@@ -402,12 +430,13 @@ public class MigrationAsyncProcessor {
 
                 trackRepository.save(track);
 
-                try {
-                    Thread.sleep(150);
-                } catch (InterruptedException interruptedException) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("Failed-track retry interrupted", interruptedException);
+                if (isRateLimitSignal(track)) {
+                    rateLimitSignals++;
+                } else {
+                    rateLimitSignals = 0;
                 }
+
+                throttleLoop(jobId, processedRetryTracks, rateLimitSignals);
             }
 
             refreshJobCounters(job);
@@ -800,6 +829,59 @@ public class MigrationAsyncProcessor {
         }
 
         return singleLine;
+    }
+
+    private void throttleLoop(UUID jobId, int processedTracks, int rateLimitSignals) {
+        sleepWithInterruptHandling(perTrackDelayMs, "Migration processing interrupted");
+
+        if (rateLimitSignals >= adaptiveCooldownAfterSignals && adaptiveCooldownMs > 0L) {
+            long jitterMs = ThreadLocalRandom.current().nextLong(0L, 250L);
+            long delayMs = Math.min(MAX_ADAPTIVE_COOLDOWN_MS, adaptiveCooldownMs + jitterMs);
+            log.warn(
+                "migration.stage=adaptive-cooldown jobId={} processedTracks={} consecutiveRateLimitSignals={} cooldownMs={}",
+                jobId,
+                processedTracks,
+                rateLimitSignals,
+                delayMs
+            );
+            sleepWithInterruptHandling(delayMs, "Migration processing interrupted during adaptive cooldown");
+            return;
+        }
+
+        if (checkpointCooldownMs > 0L && processedTracks % checkpointCooldownEveryTracks == 0) {
+            log.info(
+                "migration.stage=checkpoint-cooldown jobId={} processedTracks={} cooldownMs={}",
+                jobId,
+                processedTracks,
+                checkpointCooldownMs
+            );
+            sleepWithInterruptHandling(checkpointCooldownMs, "Migration processing interrupted during checkpoint cooldown");
+        }
+    }
+
+    private void sleepWithInterruptHandling(long delayMs, String interruptMessage) {
+        if (delayMs <= 0L) {
+            return;
+        }
+
+        try {
+            Thread.sleep(delayMs);
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(interruptMessage, interruptedException);
+        }
+    }
+
+    private boolean isRateLimitSignal(MigrationTrack track) {
+        if (track == null) {
+            return false;
+        }
+
+        String reason = Objects.requireNonNullElse(track.getFailureReason(), "").toLowerCase(Locale.ROOT);
+        return reason.contains("429")
+            || reason.contains("rate limit")
+            || reason.contains("quota")
+            || reason.contains("temporary network or api issue");
     }
 
     private boolean isRetryableTrackStatus(TrackMatchStatus status) {
