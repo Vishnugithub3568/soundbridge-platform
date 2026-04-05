@@ -20,6 +20,8 @@ public class CreateMigrationRequest {
 
     private UUID userId;
 
+    private boolean strictMode;
+
     // Legacy field support - maps to sourcePlaylistUrl
     public String getSpotifyPlaylistUrl() {
         return sourcePlaylistUrl;
@@ -67,6 +69,14 @@ public class CreateMigrationRequest {
 
     public void setUserId(UUID userId) {
         this.userId = userId;
+    }
+
+    public boolean isStrictMode() {
+        return strictMode;
+    }
+
+    public void setStrictMode(boolean strictMode) {
+        this.strictMode = strictMode;
     }
 
     public boolean isSpotifyToYouTube() {

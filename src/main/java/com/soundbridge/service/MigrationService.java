@@ -191,6 +191,7 @@ public class MigrationService {
 
         String spotifyAccessToken = Objects.requireNonNullElse(request.getSpotifyAccessToken(), "").trim();
         String googleAccessToken = Objects.requireNonNullElse(request.getGoogleAccessToken(), "").trim();
+        boolean strictMode = request.isStrictMode();
 
         if (!googleAccessToken.isEmpty() && !googleOAuthService.hasYouTubeWriteScope(googleAccessToken)) {
             throw new MigrationException(
@@ -217,7 +218,7 @@ public class MigrationService {
         job = jobRepository.saveAndFlush(job);
 
         UUID jobId = job.getId();
-        applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId);
+        applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId, strictMode);
         return MigrationJobResponse.from(job);
     }
 
@@ -235,6 +236,7 @@ public class MigrationService {
 
         String googleAccessToken = Objects.requireNonNullElse(request.getGoogleAccessToken(), "").trim();
         String spotifyAccessToken = Objects.requireNonNullElse(request.getSpotifyAccessToken(), "").trim();
+        boolean strictMode = request.isStrictMode();
 
         if (googleAccessToken.isEmpty()) {
             throw new MigrationException("Google access token is required for YouTube Music access", "MISSING_GOOGLE_TOKEN", 400);
@@ -261,7 +263,7 @@ public class MigrationService {
         job = jobRepository.saveAndFlush(job);
 
         UUID jobId = job.getId();
-        applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId);
+        applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId, strictMode);
         return MigrationJobResponse.from(job);
     }
 
@@ -298,7 +300,7 @@ public class MigrationService {
         job = jobRepository.saveAndFlush(job);
 
         UUID jobId = job.getId();
-        applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId);
+        applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId, false);
         return MigrationJobResponse.from(job);
     }
 
@@ -341,7 +343,7 @@ public class MigrationService {
         job.setPausedReason(null);
         job.setNextRetryTime(null);
         jobRepository.saveAndFlush(job);
-        applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId);
+        applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId, false);
         return MigrationJobResponse.from(job);
     }
 
@@ -356,7 +358,12 @@ public class MigrationService {
 
     @Async("migrationTaskExecutor")
     public void processMigrationAsync(UUID jobId) {
-        migrationAsyncProcessor.processMigration(jobId);
+        processMigrationAsync(jobId, false);
+    }
+
+    @Async("migrationTaskExecutor")
+    public void processMigrationAsync(UUID jobId, boolean strictMode) {
+        migrationAsyncProcessor.processMigration(jobId, strictMode);
     }
 
     @Async("migrationTaskExecutor")

@@ -52,11 +52,13 @@ export async function startMigration(
   spotifyAccessToken,
   googleAccessToken,
   direction = 'SPOTIFY_TO_YOUTUBE',
-  userId = ''
+  userId = '',
+  strictMode = false
 ) {
   const payload = {
     sourcePlaylistUrl,
-    direction
+    direction,
+    strictMode: Boolean(strictMode)
   };
   if (spotifyAccessToken && spotifyAccessToken.trim()) {
     payload.spotifyAccessToken = spotifyAccessToken.trim();

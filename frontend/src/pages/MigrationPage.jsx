@@ -428,6 +428,7 @@ function validateSourcePlaylistUrl(rawUrl, direction) {
 function MigrationPage() {
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [direction, setDirection] = useState('SPOTIFY_TO_YOUTUBE');
+  const [strictMode, setStrictMode] = useState(false);
   const [theme, setTheme] = useState(() => readThemePreference());
   const [view, setView] = useState('home');
   const [spotifyAccessToken, setSpotifyAccessToken] = useState(() => readCachedSpotifyToken());
@@ -721,7 +722,8 @@ function MigrationPage() {
         spotifyAccessToken,
         googleAccessToken,
         direction,
-        userSynced ? appUserId : ''
+        userSynced ? appUserId : '',
+        strictMode
       );
       setJob(createdJob);
       upsertHistoryEntry(createdJob, null, 0);
@@ -1381,6 +1383,18 @@ function MigrationPage() {
                 </div>
               </label>
             </div>
+            <label className="mt-4 inline-flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+              <input
+                type="checkbox"
+                checked={strictMode}
+                onChange={(event) => setStrictMode(event.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-white/20 bg-transparent accent-cyan-400"
+              />
+              <span>
+                <span className="block font-semibold text-white">Strict mode (precision first)</span>
+                <span className="block text-xs text-slate-400">Avoid low-confidence and safe-fallback matches. You may get fewer matched tracks.</span>
+              </span>
+            </label>
           </div>
 
           <div className="grid gap-4 md:grid-cols-[1fr_auto]">
@@ -1562,6 +1576,24 @@ function MigrationPage() {
                 Retry Issues ({retryableStats.total})
               </button>
             ) : null}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Confident matches</p>
+              <p className="mt-2 text-2xl font-black text-emerald-300">{reliabilityStats.confidentMatches}</p>
+              <p className="mt-1 text-xs text-slate-400">High-confidence track matches accepted.</p>
+            </article>
+            <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Fallback matches</p>
+              <p className="mt-2 text-2xl font-black text-sky-300">{reliabilityStats.fallbackUsed}</p>
+              <p className="mt-1 text-xs text-slate-400">Tracks linked via safe or low-confidence fallback.</p>
+            </article>
+            <article className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Partial exports</p>
+              <p className="mt-2 text-2xl font-black text-amber-300">{retryableStats.partial}</p>
+              <p className="mt-1 text-xs text-slate-400">Tracks matched but not fully exported to destination.</p>
+            </article>
           </div>
         </form>
       </motion.section>

@@ -3,6 +3,7 @@ package com.soundbridge.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -71,12 +72,12 @@ class MigrationServiceTest {
 
         when(jobRepository.saveAndFlush(any(MigrationJob.class))).thenReturn(saved);
         when(applicationContext.getBean(MigrationService.class)).thenReturn(migrationService);
-        doNothing().when(migrationAsyncProcessor).processMigration(any(UUID.class));
+        doNothing().when(migrationAsyncProcessor).processMigration(any(UUID.class), anyBoolean());
 
         var response = migrationService.startMigration("https://open.spotify.com/playlist/abc", null, null);
 
         assertEquals(JobStatus.QUEUED, response.status());
-        verify(migrationAsyncProcessor).processMigration(saved.getId());
+        verify(migrationAsyncProcessor).processMigration(saved.getId(), false);
     }
 
     @Test

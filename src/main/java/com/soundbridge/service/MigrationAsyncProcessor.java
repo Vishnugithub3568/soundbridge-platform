@@ -65,6 +65,7 @@ public class MigrationAsyncProcessor {
     private final TrackMatchCacheService trackMatchCacheService;
     private final double matchThreshold;
     private final double retryMatchThreshold;
+    private final double strictMatchThreshold;
     private final double titleWeight;
     private final double artistWeight;
     private final double indicatorMismatchPenalty;
@@ -81,6 +82,7 @@ public class MigrationAsyncProcessor {
         TrackMatchCacheService trackMatchCacheService,
         @Value("${youtube.match.threshold:0.65}") double matchThreshold,
         @Value("${youtube.retry.match.threshold:0.40}") double retryMatchThreshold,
+        @Value("${youtube.match.strict.threshold:0.72}") double strictMatchThreshold,
         @Value("${youtube.match.title.weight:0.62}") double configuredTitleWeight,
         @Value("${youtube.match.artist.weight:0.38}") double configuredArtistWeight,
         @Value("${youtube.match.indicator.mismatch.penalty:0.18}") double indicatorMismatchPenalty,
@@ -95,6 +97,7 @@ public class MigrationAsyncProcessor {
         this.trackMatchCacheService = trackMatchCacheService;
         this.matchThreshold = matchThreshold;
         this.retryMatchThreshold = retryMatchThreshold;
+        this.strictMatchThreshold = Math.max(matchThreshold, strictMatchThreshold);
         double sanitizedTitleWeight = Math.max(0.0, configuredTitleWeight);
         double sanitizedArtistWeight = Math.max(0.0, configuredArtistWeight);
         double totalWeight = sanitizedTitleWeight + sanitizedArtistWeight;
@@ -127,6 +130,7 @@ public class MigrationAsyncProcessor {
             trackMatchCacheService,
             0.65,
             0.40,
+            0.72,
             0.62,
             0.38,
             0.18,
@@ -136,6 +140,10 @@ public class MigrationAsyncProcessor {
     }
 
     public void processMigration(UUID jobId) {
+        processMigration(jobId, false);
+    }
+
+    public void processMigration(UUID jobId, boolean strictMode) {
         MigrationJob job = jobRepository.findById(jobId).orElse(null);
         if (job == null) {
             return;
@@ -196,9 +204,19 @@ public class MigrationAsyncProcessor {
                     migrationTrack.setSourceArtistName(Objects.requireNonNullElse(sourceTrack.artist(), "Unknown Artist"));
                     migrationTrack.setSourceAlbumName(sourceTrack.album());
 
+                    double effectiveMatchThreshold = strictMode ? strictMatchThreshold : matchThreshold;
+
                     boolean matchedTrack = spotifyDestination
                         ? processSpotifyDestinationTrack(migrationTrack, sourceTrack, targetPlaylistId, targetAccessToken)
-                        : processYouTubeDestinationTrack(job, migrationTrack, sourceTrack, targetPlaylistId, targetAccessToken);
+                        : processYouTubeDestinationTrack(
+                            job,
+                            migrationTrack,
+                            sourceTrack,
+                            targetPlaylistId,
+                            targetAccessToken,
+                            strictMode,
+                            effectiveMatchThreshold
+                        );
 
                     if (matchedTrack) {
                         job.setMatchedTracks(job.getMatchedTracks() + 1);
@@ -295,7 +313,15 @@ public class MigrationAsyncProcessor {
 
                 boolean matchedTrack = spotifyDestination
                     ? processSpotifyDestinationTrack(track, sourceTrack, targetPlaylistId, targetAccessToken)
-                    : processYouTubeDestinationTrack(job, track, sourceTrack, targetPlaylistId, targetAccessToken);
+                    : processYouTubeDestinationTrack(
+                        job,
+                        track,
+                        sourceTrack,
+                        targetPlaylistId,
+                        targetAccessToken,
+                        false,
+                        retryMatchThreshold
+                    );
 
                 if (matchedTrack && track.getMatchStatus() == TrackMatchStatus.MATCHED) {
                     track.setFailureReason(null);
@@ -349,9 +375,17 @@ public class MigrationAsyncProcessor {
         MigrationTrack migrationTrack,
         SpotifyTrack sourceTrack,
         List<YouTubeCandidate> candidates,
-        double threshold
+        double threshold,
+        boolean strictMode
     ) {
         if (candidates == null || candidates.isEmpty()) {
+            if (strictMode) {
+                markTrackAsNotFound(
+                    migrationTrack,
+                    "FAILED: Strict mode rejected fallback because no confident candidate was found"
+                );
+                return false;
+            }
             applySearchFallbackMatch(migrationTrack, sourceTrack, NO_CANDIDATE_FALLBACK_REASON);
             return true;
         }
@@ -370,6 +404,14 @@ public class MigrationAsyncProcessor {
             migrationTrack.setMatchStatus(TrackMatchStatus.MATCHED);
             migrationTrack.setFailureReason(null);
             return true;
+        }
+
+        if (strictMode) {
+            markTrackAsNotFound(
+                migrationTrack,
+                "FAILED: Strict mode rejected low-confidence candidate (score=" + round3(best.score()) + ")"
+            );
+            return false;
         }
 
         migrationTrack.setTargetTrackId(best.candidate().videoId());
@@ -403,6 +445,19 @@ public class MigrationAsyncProcessor {
         migrationTrack.setFailureReason(reason);
         migrationTrack.setTargetTrackId(null);
         migrationTrack.setTargetTrackUrl(null);
+    }
+
+    private void markTrackAsNotFound(MigrationTrack migrationTrack, String reason) {
+        migrationTrack.setMatchStatus(TrackMatchStatus.NOT_FOUND);
+        migrationTrack.setConfidenceScore(0.0);
+        migrationTrack.setMatchScore(0.0);
+        migrationTrack.setFailureReason(reason);
+        migrationTrack.setTargetTrackId(null);
+        migrationTrack.setTargetTrackUrl(null);
+        migrationTrack.setTargetTrackTitle(null);
+        migrationTrack.setTargetThumbnailUrl(null);
+        migrationTrack.setYouTubeTitle(null);
+        migrationTrack.setYouTubeVideoId(null);
     }
 
     private void markTrackAsPartial(MigrationTrack migrationTrack, String reason) {
@@ -459,13 +514,15 @@ public class MigrationAsyncProcessor {
         MigrationTrack migrationTrack,
         SpotifyTrack sourceTrack,
         String targetPlaylistId,
-        String googleAccessToken
+        String googleAccessToken,
+        boolean strictMode,
+        double threshold
     ) {
         try {
             String videoId = trackMatchCacheService.findCachedVideoId(job.getUserId(), sourceTrack).orElse("").trim();
             if (videoId.isBlank()) {
                 List<YouTubeCandidate> candidates = youTubeClient.searchCandidates(sourceTrack);
-                boolean matchedTrack = applyCandidateMatch(migrationTrack, sourceTrack, candidates, matchThreshold);
+                boolean matchedTrack = applyCandidateMatch(migrationTrack, sourceTrack, candidates, threshold, strictMode);
                 if (!matchedTrack) {
                     return false;
                 }
@@ -511,6 +568,15 @@ public class MigrationAsyncProcessor {
             if (isQuotaExceeded(ex)) {
                 throw new QuotaExceededException(QUOTA_PAUSED_REASON, ex);
             }
+
+            if (strictMode) {
+                markTrackAsNotFound(
+                    migrationTrack,
+                    "FAILED: Strict mode disabled lookup fallback after provider error: " + summarizeError(ex)
+                );
+                return false;
+            }
+
             applySearchFallbackMatch(
                 migrationTrack,
                 sourceTrack,
