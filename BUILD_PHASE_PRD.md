@@ -184,9 +184,20 @@ None.
 
 ### Implementation Steps
 1. Final end-to-end manual test matrix execution. 🔄 Executed on 2026-04-05 with partial pass in local env. See `PHASE7_STEP1_CHECKLIST_REPORT.md`.
-2. Confirm OAuth, CORS, and env parity across preview/prod.
+2. Confirm OAuth, CORS, and env parity across preview/prod. ✅ Completed on 2026-04-05.
 3. Consolidate README deployment steps.
 4. Delete temporary build-phase docs/files (including this file).
+
+### Step 2 Verification Evidence (2026-04-05)
+- Deploy smoke check passed (`scripts/deploy-smoke-check.ps1`):
+  - `GET /health`
+  - `GET /diagnose`
+  - `GET /migrate/history`
+  - `POST /migrate/preflight`
+- CORS preflight checks against Render backend (`https://soundbridge-platform.onrender.com/health`) passed:
+  - `Origin: https://soundbridge.vercel.app` => `200` with matching `access-control-allow-origin`
+  - `Origin: https://soundbridge-platform-zeta.vercel.app` => `200` with matching `access-control-allow-origin`
+  - `Origin: https://evil.example.com` => `403` (blocked)
 
 ### Acceptance Criteria
 - Full checklist passes in production environment.
