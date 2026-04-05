@@ -18,7 +18,9 @@ public record MigrationTrackResponse(
     TrackMatchStatus matchStatus,
     Double matchScore,
     Double confidenceScore,
-    String failureReason
+    String failureReason,
+    String issueCategory,
+    String recommendedAction
 ) {
     public MigrationTrackResponse(
         Long id,
@@ -47,12 +49,15 @@ public record MigrationTrackResponse(
             matchStatus,
             confidenceScore,
             confidenceScore,
-            failureReason
+            failureReason,
+            IssueCategoryClassifier.categorize(matchStatus, failureReason),
+            IssueCategoryClassifier.recommendedAction(IssueCategoryClassifier.categorize(matchStatus, failureReason))
         );
     }
 
     public static MigrationTrackResponse from(MigrationTrack track) {
         Objects.requireNonNull(track, "track must not be null");
+        String issueCategory = IssueCategoryClassifier.categorize(track.getMatchStatus(), track.getFailureReason());
         return new MigrationTrackResponse(
             track.getId(),
             track.getSourceTrackName(),
@@ -67,7 +72,9 @@ public record MigrationTrackResponse(
             track.getMatchStatus(),
             track.getMatchScore(),
             track.getConfidenceScore(),
-            track.getFailureReason()
+            track.getFailureReason(),
+            issueCategory,
+            IssueCategoryClassifier.recommendedAction(issueCategory)
         );
     }
 }

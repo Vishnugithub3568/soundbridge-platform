@@ -183,6 +183,78 @@ function isFailedReason(reason) {
   return String(reason || '').trim().startsWith('FAILED:');
 }
 
+const ISSUE_CATEGORY_META = {
+  QUOTA: {
+    label: 'Quota',
+    action: 'Wait for quota reset, then retry failed tracks.',
+    checklist: 'Pause new large migrations and retry after provider quota reset window.'
+  },
+  PERMISSION: {
+    label: 'Permission',
+    action: 'Reconnect account and approve required OAuth scopes.',
+    checklist: 'Re-run OAuth and confirm requested write/read scopes are granted.'
+  },
+  TOKEN: {
+    label: 'Token',
+    action: 'Reconnect account to refresh expired or invalid tokens.',
+    checklist: 'Disconnect and reconnect the provider before retrying.'
+  },
+  TRANSIENT: {
+    label: 'Transient',
+    action: 'Retry now; temporary API/network instability is likely.',
+    checklist: 'Retry once now and check provider status page if failures continue.'
+  },
+  NO_MATCH: {
+    label: 'No match',
+    action: 'Review track metadata and retry with cleaner titles/artists.',
+    checklist: 'Check title/artist typos and consider manual destination search for outliers.'
+  },
+  PARTIAL: {
+    label: 'Partial export',
+    action: 'Review partial tracks and retry to recover missing destination adds.',
+    checklist: 'Inspect partial rows in Track Mapping before running retry.'
+  },
+  UNKNOWN: {
+    label: 'Unknown',
+    action: 'Inspect track-level reason details and retry after provider checks.',
+    checklist: 'Check track error reasons and backend logs for root cause hints.'
+  }
+};
+
+function getIssueCategoryMeta(category) {
+  return ISSUE_CATEGORY_META[String(category || '').toUpperCase()] || ISSUE_CATEGORY_META.UNKNOWN;
+}
+
+function inferIssueCategory(track) {
+  const fromBackend = String(track?.issueCategory || '').trim().toUpperCase();
+  if (fromBackend && fromBackend !== 'NONE' && fromBackend !== 'FALLBACK') {
+    return fromBackend;
+  }
+
+  const status = String(track?.matchStatus || '').toUpperCase();
+  const reason = String(track?.failureReason || '').toLowerCase();
+
+  if (status === 'NOT_FOUND' || reason.includes('no match found') || reason.includes('no spotify match found')) {
+    return 'NO_MATCH';
+  }
+  if (reason.includes('quota') || reason.includes('rate limit')) {
+    return 'QUOTA';
+  }
+  if (reason.includes('permission') || reason.includes('scope') || reason.includes('access_denied') || reason.includes('forbidden')) {
+    return 'PERMISSION';
+  }
+  if (reason.includes('token') || reason.includes('expired') || reason.includes('unauthorized') || reason.includes('invalid_grant')) {
+    return 'TOKEN';
+  }
+  if (reason.includes('network') || reason.includes('temporary') || reason.includes('timeout') || reason.includes('connection')) {
+    return 'TRANSIENT';
+  }
+  if (status === 'PARTIAL' || reason.startsWith('partial:')) {
+    return 'PARTIAL';
+  }
+  return 'UNKNOWN';
+}
+
 function encodeBase64Url(bytes) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
   let output = '';
@@ -427,24 +499,40 @@ function MigrationPage() {
       total: 0,
       failed: 0,
       partial: 0,
-      notFound: 0
+      notFound: 0,
+      categories: {},
+      dominantCategory: 'UNKNOWN'
     };
 
     for (const track of tracks || []) {
       if (track.matchStatus === 'FAILED') {
         summary.failed += 1;
         summary.total += 1;
+        const category = inferIssueCategory(track);
+        summary.categories[category] = (summary.categories[category] || 0) + 1;
       } else if (track.matchStatus === 'PARTIAL') {
         summary.partial += 1;
         summary.total += 1;
+        const category = inferIssueCategory(track);
+        summary.categories[category] = (summary.categories[category] || 0) + 1;
       } else if (track.matchStatus === 'NOT_FOUND') {
         summary.notFound += 1;
         summary.total += 1;
+        const category = inferIssueCategory(track);
+        summary.categories[category] = (summary.categories[category] || 0) + 1;
       }
+    }
+
+    const dominantEntry = Object.entries(summary.categories)
+      .sort((left, right) => right[1] - left[1])[0];
+    if (dominantEntry?.[0]) {
+      summary.dominantCategory = dominantEntry[0];
     }
 
     return summary;
   }, [tracks]);
+
+  const dominantRetryIssueMeta = getIssueCategoryMeta(retryableStats.dominantCategory);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -1443,10 +1531,25 @@ function MigrationPage() {
                 <span>Running async migration job in background.</span>
               </div>
               {retryableStats.total > 0 ? (
-                <p className="text-xs text-slate-400">
-                  Retryable issues: {retryableStats.failed} failed, {retryableStats.partial} partial, {retryableStats.notFound} not-found.
-                  Reconnect OAuth if tokens expired, then retry.
-                </p>
+                <div className="space-y-2 text-xs text-slate-300">
+                  <p>
+                    Retryable issues: {retryableStats.failed} failed, {retryableStats.partial} partial, {retryableStats.notFound} not-found.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(retryableStats.categories).map(([category, count]) => (
+                      <span
+                        key={category}
+                        className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-2 py-1 font-semibold uppercase tracking-[0.12em] text-slate-200"
+                      >
+                        {getIssueCategoryMeta(category).label}: {count}
+                      </span>
+                    ))}
+                  </div>
+                  <p>
+                    Dominant issue: <span className="font-semibold text-white">{dominantRetryIssueMeta.label}</span>. {dominantRetryIssueMeta.action}
+                  </p>
+                  <p className="text-slate-400">Checklist: {dominantRetryIssueMeta.checklist}</p>
+                </div>
               ) : null}
             </div>
             {canRetryFailed ? (

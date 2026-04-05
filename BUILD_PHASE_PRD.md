@@ -73,7 +73,7 @@ Build a Soundiiz-like migration experience for playlist transfer between Spotify
 
 ### Current Phase Snapshot (as of 2026-04-05)
 - Phase 3: Completed
-- Phase 4: In progress
+- Phase 4: Completed (2026-04-05)
 - Phase 5: Pending
 - Phase 6: In progress (Step 1 completed)
 - Phase 7: Pending
@@ -102,6 +102,8 @@ Current history is local/browser-scoped, not account-scoped. Users lose continui
 - Dashboard still loads gracefully if history API fails.
 
 ## Phase 4: Retry Intelligence and Recovery UX (Priority: High)
+Status: Completed on 2026-04-05
+
 ### Problem
 Retry exists, but user guidance can still be improved for specific root causes.
 
@@ -118,6 +120,13 @@ Retry exists, but user guidance can still be improved for specific root causes.
 ### Acceptance Criteria
 - User can identify why retry failed from UI without reading raw backend messages.
 - Retry success rate improves for transient/token-related failures.
+
+### Delivered (2026-04-05)
+1. Added stable issue categories in backend response model for track-level retry diagnostics (`MigrationTrackResponse.issueCategory`).
+2. Added backend recommended retry action per track (`MigrationTrackResponse.recommendedAction`).
+3. Added job-level issue summary in migration report (`issueCategoryCounts`, `dominantIssueCategory`, `dominantIssueAction`).
+4. Added category counts and dominant issue checklist guidance in transfer UI before retry.
+5. Added per-track issue category tags in Track Mapping view.
 
 ## Phase 5: Match Quality Improvements (Priority: High)
 ### Problem

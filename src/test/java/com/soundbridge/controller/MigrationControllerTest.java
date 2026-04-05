@@ -19,6 +19,7 @@ import com.soundbridge.model.TrackMatchStatus;
 import com.soundbridge.service.MigrationService;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -107,7 +108,10 @@ class MigrationControllerTest {
             2,
             1,
             33.3,
-            List.of()
+            List.of(),
+            Map.of("TOKEN", 1),
+            "TOKEN",
+            "Reconnect the account to refresh expired or invalid tokens."
         ));
 
         mockMvc.perform(get("/migrate/{jobId}", jobId))

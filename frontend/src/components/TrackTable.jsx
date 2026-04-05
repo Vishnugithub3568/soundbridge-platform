@@ -67,6 +67,28 @@ function classifyReason(reason) {
   return { type: 'info', label: value };
 }
 
+function issueCategoryLabel(category) {
+  const normalized = String(category || '').trim().toUpperCase();
+  switch (normalized) {
+    case 'QUOTA':
+      return 'Quota';
+    case 'PERMISSION':
+      return 'Permission';
+    case 'TOKEN':
+      return 'Token';
+    case 'TRANSIENT':
+      return 'Transient';
+    case 'NO_MATCH':
+      return 'No Match';
+    case 'PARTIAL':
+      return 'Partial';
+    case 'UNKNOWN':
+      return 'Unknown';
+    default:
+      return '';
+  }
+}
+
 function ScoreVisualization({ score }) {
   if (!score) return <span className="text-slate-500">-</span>;
   
@@ -175,6 +197,7 @@ function TrackTable({ tracks }) {
               const thumbnail = getThumbnail(track);
               const statusColor = getStatusColor(track.matchStatus);
               const reasonMeta = classifyReason(track.failureReason);
+              const issueLabel = issueCategoryLabel(track.issueCategory);
               return (
                 <tr key={track.id} className="border-b border-white/5 align-top transition hover:bg-white/5">
                   <td className="py-4 pr-2 font-semibold max-w-xs truncate text-white">{track.sourceTrackName}</td>
@@ -226,6 +249,11 @@ function TrackTable({ tracks }) {
                     )}
                   </td>
                   <td className="py-4 pr-2 text-xs max-w-xs text-slate-300">
+                    {issueLabel ? (
+                      <span className="mb-1 inline-flex items-center rounded-full border border-violet-300/20 bg-violet-400/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-200">
+                        {issueLabel}
+                      </span>
+                    ) : null}
                     {reasonMeta.type === 'fallback' ? (
                       <span className="inline-flex items-center rounded-full border border-sky-400/20 bg-sky-400/10 px-2 py-1 font-semibold text-sky-200">
                         Reliable Fallback: {reasonMeta.label}

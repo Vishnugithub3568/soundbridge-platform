@@ -1,6 +1,7 @@
 package com.soundbridge.service;
 
 import com.soundbridge.dto.CreateMigrationRequest;
+import com.soundbridge.dto.IssueCategoryClassifier;
 import com.soundbridge.dto.MigrationJobResponse;
 import com.soundbridge.dto.MigrationQuotaEstimateResponse;
 import com.soundbridge.dto.MigrationPreflightRequest;
@@ -15,7 +16,10 @@ import com.soundbridge.model.MigrationJob;
 import com.soundbridge.model.TrackMatchStatus;
 import com.soundbridge.repository.MigrationJobRepository;
 import com.soundbridge.repository.MigrationTrackRepository;
+import java.util.Comparator;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.ArrayList;
@@ -382,6 +386,23 @@ public class MigrationService {
             ? 0.0
             : ((double) job.getMatchedTracks() / (double) job.getTotalTracks()) * 100.0;
 
+        Map<String, Integer> issueCategoryCounts = new LinkedHashMap<>();
+        for (MigrationTrackResponse track : tracks) {
+            String category = String.valueOf(track.issueCategory());
+            if (category.isBlank() || "NONE".equalsIgnoreCase(category)) {
+                continue;
+            }
+            issueCategoryCounts.merge(category, 1, Integer::sum);
+        }
+
+        String dominantIssueCategory = issueCategoryCounts.entrySet()
+            .stream()
+            .max(Comparator.comparingInt(Map.Entry::getValue))
+            .map(Map.Entry::getKey)
+            .orElse("NONE");
+
+        String dominantIssueAction = IssueCategoryClassifier.recommendedAction(dominantIssueCategory);
+
         return new MigrationReportResponse(
             job.getId(),
             job.getStatus(),
@@ -389,7 +410,10 @@ public class MigrationService {
             job.getMatchedTracks(),
             job.getFailedTracks(),
             matchRate,
-            tracks
+            tracks,
+            issueCategoryCounts,
+            dominantIssueCategory,
+            dominantIssueAction
         );
     }
 
