@@ -74,7 +74,7 @@ Build a Soundiiz-like migration experience for playlist transfer between Spotify
 ### Current Phase Snapshot (as of 2026-04-05)
 - Phase 3: Completed
 - Phase 4: Completed (2026-04-05)
-- Phase 5: Pending
+- Phase 5: In progress (Steps 1-2 completed)
 - Phase 6: In progress (Step 1 completed)
 - Phase 7: Pending
 
@@ -129,6 +129,8 @@ Retry exists, but user guidance can still be improved for specific root causes.
 5. Added per-track issue category tags in Track Mapping view.
 
 ## Phase 5: Match Quality Improvements (Priority: High)
+Status: In progress on 2026-04-05
+
 ### Problem
 Some fallback or low-confidence matches are acceptable but still noisy.
 
@@ -147,6 +149,21 @@ Some fallback or low-confidence matches are acceptable but still noisy.
 ### Acceptance Criteria
 - Reduced obvious mismatches in sampled playlists.
 - Improved confident-match ratio without major drop in completion rate.
+
+### Delivered So Far (2026-04-05)
+1. Improved candidate normalization by stripping noisy qualifiers and harmonizing text before similarity scoring.
+2. Added indicator-aware matching logic for remix/live/cover/karaoke/explicit/clean/acoustic/instrumental.
+3. Added configurable weighted scoring knobs via backend properties:
+  - `youtube.match.title.weight`
+  - `youtube.match.artist.weight`
+  - `youtube.match.indicator.mismatch.penalty`
+  - `youtube.match.indicator.match.bonus`
+  - `youtube.match.artist.title.cross-weight`
+4. Added score adjustments for indicator mismatch penalties and indicator-match bonuses.
+
+### Remaining For Completion
+1. Add optional strict mode toggle in UI (precision-over-recall mode).
+2. Surface per-run quality metrics summary (confident vs fallback vs partial) as explicit run metrics.
 
 ## Phase 6: Operational Hardening (Priority: Medium)
 ### Goals

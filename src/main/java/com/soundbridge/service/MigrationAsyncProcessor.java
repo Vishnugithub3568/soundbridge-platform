@@ -9,6 +9,7 @@ import com.soundbridge.exception.QuotaExceededException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
+import java.util.HashSet;
 import java.util.Comparator;
 import com.soundbridge.model.JobStatus;
 import com.soundbridge.model.MigrationJob;
@@ -37,9 +38,9 @@ import org.springframework.web.client.HttpStatusCodeException;
 public class MigrationAsyncProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(MigrationAsyncProcessor.class);
-    private static final Set<String> MISMATCH_KEYWORDS = Set.of("remix", "live", "cover", "karaoke");
-    private static final double TITLE_WEIGHT = 0.7;
-    private static final double ARTIST_WEIGHT = 0.3;
+    private static final Set<String> INDICATOR_KEYWORDS = Set.of(
+        "remix", "live", "cover", "karaoke", "explicit", "clean", "acoustic", "instrumental"
+    );
     private static final String LOW_CONFIDENCE_FALLBACK_REASON =
         "LOW_CONFIDENCE_FALLBACK: best candidate accepted to keep migration reliable";
     private static final String NO_CANDIDATE_FALLBACK_REASON =
@@ -50,6 +51,11 @@ public class MigrationAsyncProcessor {
     private static final int YOUTUBE_PLAYLIST_CREATE_UNITS = 50;
     private static final String QUOTA_PAUSED_REASON =
         "YouTube API quota exceeded. Migration is paused and can be resumed after quota reset.";
+    private static final Pattern BRACKETED_SEGMENTS_PATTERN = Pattern.compile("\\([^)]*\\)|\\[[^]]*]|\\{[^}]*}");
+    private static final Pattern FEATURING_PATTERN = Pattern.compile("\\b(feat|ft|featuring|with)\\b");
+    private static final Pattern NOISE_TERMS_PATTERN = Pattern.compile(
+        "\\b(official|video|audio|lyrics?|lyric|version|remaster(ed)?|mono|stereo|topic|hq|hd)\\b"
+    );
 
     private final MigrationJobRepository jobRepository;
     private final MigrationTrackRepository trackRepository;
@@ -59,6 +65,11 @@ public class MigrationAsyncProcessor {
     private final TrackMatchCacheService trackMatchCacheService;
     private final double matchThreshold;
     private final double retryMatchThreshold;
+    private final double titleWeight;
+    private final double artistWeight;
+    private final double indicatorMismatchPenalty;
+    private final double indicatorMatchBonus;
+    private final double artistTitleCrossWeight;
 
     @Autowired
     public MigrationAsyncProcessor(
@@ -69,7 +80,12 @@ public class MigrationAsyncProcessor {
         YouTubeMusicClient youTubeMusicClient,
         TrackMatchCacheService trackMatchCacheService,
         @Value("${youtube.match.threshold:0.65}") double matchThreshold,
-        @Value("${youtube.retry.match.threshold:0.40}") double retryMatchThreshold
+        @Value("${youtube.retry.match.threshold:0.40}") double retryMatchThreshold,
+        @Value("${youtube.match.title.weight:0.62}") double configuredTitleWeight,
+        @Value("${youtube.match.artist.weight:0.38}") double configuredArtistWeight,
+        @Value("${youtube.match.indicator.mismatch.penalty:0.18}") double indicatorMismatchPenalty,
+        @Value("${youtube.match.indicator.match.bonus:0.04}") double indicatorMatchBonus,
+        @Value("${youtube.match.artist.title.cross-weight:0.55}") double artistTitleCrossWeight
     ) {
         this.jobRepository = jobRepository;
         this.trackRepository = trackRepository;
@@ -79,6 +95,19 @@ public class MigrationAsyncProcessor {
         this.trackMatchCacheService = trackMatchCacheService;
         this.matchThreshold = matchThreshold;
         this.retryMatchThreshold = retryMatchThreshold;
+        double sanitizedTitleWeight = Math.max(0.0, configuredTitleWeight);
+        double sanitizedArtistWeight = Math.max(0.0, configuredArtistWeight);
+        double totalWeight = sanitizedTitleWeight + sanitizedArtistWeight;
+        if (totalWeight <= 0.0) {
+            this.titleWeight = 0.62;
+            this.artistWeight = 0.38;
+        } else {
+            this.titleWeight = sanitizedTitleWeight / totalWeight;
+            this.artistWeight = sanitizedArtistWeight / totalWeight;
+        }
+        this.indicatorMismatchPenalty = Math.max(0.0, indicatorMismatchPenalty);
+        this.indicatorMatchBonus = Math.max(0.0, indicatorMatchBonus);
+        this.artistTitleCrossWeight = clamp(artistTitleCrossWeight);
     }
 
     public MigrationAsyncProcessor(
@@ -89,7 +118,21 @@ public class MigrationAsyncProcessor {
         YouTubeMusicClient youTubeMusicClient,
         TrackMatchCacheService trackMatchCacheService
     ) {
-        this(jobRepository, trackRepository, spotifyClient, youTubeClient, youTubeMusicClient, trackMatchCacheService, 0.65, 0.40);
+        this(
+            jobRepository,
+            trackRepository,
+            spotifyClient,
+            youTubeClient,
+            youTubeMusicClient,
+            trackMatchCacheService,
+            0.65,
+            0.40,
+            0.62,
+            0.38,
+            0.18,
+            0.04,
+            0.55
+        );
     }
 
     public void processMigration(UUID jobId) {
@@ -610,12 +653,15 @@ public class MigrationAsyncProcessor {
     }
 
     private ScoredCandidate findBestCandidate(SpotifyTrack sourceTrack, List<YouTubeCandidate> candidates) {
-        String normalizedSourceTitle = normalize(sourceTrack.name());
-        String normalizedSourceArtist = normalize(sourceTrack.artist());
+        String normalizedSourceTitle = normalizeForSimilarity(sourceTrack.name());
+        String normalizedSourceArtist = normalizeForSimilarity(sourceTrack.artist());
+        Set<String> sourceIndicators = extractIndicators(
+            Objects.requireNonNullElse(sourceTrack.name(), "") + " " + Objects.requireNonNullElse(sourceTrack.album(), "")
+        );
 
         return candidates
             .stream()
-            .map(candidate -> scoreCandidate(sourceTrack, normalizedSourceTitle, normalizedSourceArtist, candidate))
+            .map(candidate -> scoreCandidate(sourceTrack, normalizedSourceTitle, normalizedSourceArtist, sourceIndicators, candidate))
             .sorted(
                 Comparator
                     .comparingDouble(ScoredCandidate::score).reversed()
@@ -630,28 +676,33 @@ public class MigrationAsyncProcessor {
         SpotifyTrack sourceTrack,
         String normalizedSourceTitle,
         String normalizedSourceArtist,
+        Set<String> sourceIndicators,
         YouTubeCandidate candidate
     ) {
-        String normalizedCandidateTitle = normalize(candidate.title());
-        String normalizedCandidateArtist = normalize(candidate.channelTitle());
+        String normalizedCandidateTitle = normalizeForSimilarity(candidate.title());
+        String normalizedCandidateArtist = normalizeForSimilarity(candidate.channelTitle());
+        Set<String> candidateIndicators = extractIndicators(
+            Objects.requireNonNullElse(candidate.title(), "") + " " + Objects.requireNonNullElse(candidate.channelTitle(), "")
+        );
 
         double titleScore = ratioSimilarity(normalizedSourceTitle, normalizedCandidateTitle);
         double artistScore = Math.max(
             ratioSimilarity(normalizedSourceArtist, normalizedCandidateArtist),
-            ratioSimilarity(normalizedSourceArtist, normalizedCandidateTitle)
+            artistTitleCrossWeight * ratioSimilarity(normalizedSourceArtist, normalizedCandidateTitle)
         );
 
         double penalty = mismatchPenalty(
-            normalizedSourceTitle,
-            normalizedCandidateTitle,
             normalizedSourceArtist,
-            normalizedCandidateArtist
+            normalizedCandidateArtist,
+            sourceIndicators,
+            candidateIndicators
         );
+        double bonus = indicatorBonus(sourceIndicators, candidateIndicators);
 
-        double finalScore = clamp((TITLE_WEIGHT * titleScore) + (ARTIST_WEIGHT * artistScore) - penalty);
+        double finalScore = clamp((titleWeight * titleScore) + (artistWeight * artistScore) + bonus - penalty);
 
         log.debug(
-            "YouTube scoring | source='{}' artist='{}' | candidateId={} title='{}' channel='{}' titleScore={} artistScore={} penalty={} finalScore={} threshold={}",
+            "YouTube scoring | source='{}' artist='{}' | candidateId={} title='{}' channel='{}' titleScore={} artistScore={} bonus={} penalty={} finalScore={} threshold={}",
             sourceTrack.name(),
             sourceTrack.artist(),
             candidate.videoId(),
@@ -659,6 +710,7 @@ public class MigrationAsyncProcessor {
             candidate.channelTitle(),
             round3(titleScore),
             round3(artistScore),
+            round3(bonus),
             round3(penalty),
             round3(finalScore),
             round3(matchThreshold)
@@ -713,24 +765,57 @@ public class MigrationAsyncProcessor {
     }
 
     private double mismatchPenalty(
-        String sourceTitle,
-        String candidateTitle,
         String sourceArtist,
-        String candidateArtist
+        String candidateArtist,
+        Set<String> sourceIndicators,
+        Set<String> candidateIndicators
     ) {
         double penalty = 0.0;
-        Set<String> sourceTokens = tokenSet(sourceTitle + " " + sourceArtist);
-        Set<String> candidateTokens = tokenSet(candidateTitle + " " + candidateArtist);
 
-        for (String keyword : MISMATCH_KEYWORDS) {
-            boolean sourceHas = sourceTokens.contains(keyword);
-            boolean candidateHas = candidateTokens.contains(keyword);
+        for (String keyword : INDICATOR_KEYWORDS) {
+            boolean sourceHas = sourceIndicators.contains(keyword);
+            boolean candidateHas = candidateIndicators.contains(keyword);
             if (sourceHas != candidateHas) {
-                penalty += 0.15;
+                penalty += indicatorMismatchPenalty;
             }
         }
 
-        return Math.min(0.45, penalty);
+        if (!sourceArtist.isBlank() && !candidateArtist.isBlank() && ratioSimilarity(sourceArtist, candidateArtist) < 0.25) {
+            penalty += 0.08;
+        }
+
+        return Math.min(0.55, penalty);
+    }
+
+    private double indicatorBonus(Set<String> sourceIndicators, Set<String> candidateIndicators) {
+        if (sourceIndicators.isEmpty() || candidateIndicators.isEmpty()) {
+            return 0.0;
+        }
+
+        int matches = 0;
+        for (String indicator : sourceIndicators) {
+            if (candidateIndicators.contains(indicator)) {
+                matches += 1;
+            }
+        }
+
+        return Math.min(0.12, matches * indicatorMatchBonus);
+    }
+
+    private Set<String> extractIndicators(String value) {
+        Set<String> indicators = new HashSet<>();
+        if (value == null || value.isBlank()) {
+            return indicators;
+        }
+
+        Set<String> tokens = tokenSet(normalizeForIndicator(value));
+        for (String keyword : INDICATOR_KEYWORDS) {
+            if (tokens.contains(keyword)) {
+                indicators.add(keyword);
+            }
+        }
+
+        return indicators;
     }
 
     private Set<String> tokenSet(String value) {
@@ -746,7 +831,7 @@ public class MigrationAsyncProcessor {
         return tokens;
     }
 
-    private String normalize(String value) {
+    private String normalizeForIndicator(String value) {
         if (value == null) {
             return "";
         }
@@ -755,6 +840,21 @@ public class MigrationAsyncProcessor {
             .replaceAll("\\p{M}+", "")
             .toLowerCase(Locale.ROOT)
             .replaceAll("[^a-z0-9\\s]", " ")
+            .replaceAll("\\s+", " ")
+            .trim();
+    }
+
+    private String normalizeForSimilarity(String value) {
+        String normalized = normalizeForIndicator(value);
+        if (normalized.isBlank()) {
+            return normalized;
+        }
+
+        normalized = BRACKETED_SEGMENTS_PATTERN.matcher(normalized).replaceAll(" ");
+        normalized = FEATURING_PATTERN.matcher(normalized).replaceAll(" ");
+        normalized = NOISE_TERMS_PATTERN.matcher(normalized).replaceAll(" ");
+
+        return normalized
             .replaceAll("\\s+", " ")
             .trim();
     }

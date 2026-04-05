@@ -74,6 +74,11 @@ npm run build
 	- `SPOTIFY_SAFE_FALLBACK_ENABLED=false` (default)
 	- `YOUTUBE_MATCH_THRESHOLD=0.45`
 	- `YOUTUBE_RETRY_MATCH_THRESHOLD=0.40`
+   - `YOUTUBE_MATCH_TITLE_WEIGHT=0.62`
+   - `YOUTUBE_MATCH_ARTIST_WEIGHT=0.38`
+   - `YOUTUBE_MATCH_INDICATOR_MISMATCH_PENALTY=0.18`
+   - `YOUTUBE_MATCH_INDICATOR_MATCH_BONUS=0.04`
+   - `YOUTUBE_MATCH_ARTIST_TITLE_CROSS_WEIGHT=0.55`
 
 - Google OAuth note:
    - If Google shows `access_denied` and says the app has not completed verification, add your Google account as a Test user in the Google Cloud OAuth consent screen or publish the app.
