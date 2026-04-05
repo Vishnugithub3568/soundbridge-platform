@@ -5,6 +5,10 @@ function isLocalRuntimeHost() {
   return host === 'localhost' || host === '127.0.0.1';
 }
 
+function isVercelRuntimeHost() {
+  return window.location.hostname.endsWith('.vercel.app');
+}
+
 function isLoopbackUrl(url) {
   try {
     const parsed = new URL(url);
@@ -15,13 +19,20 @@ function isLoopbackUrl(url) {
 }
 
 function resolveApiBaseUrl() {
+  const renderProductionApi = 'https://soundbridge-platform.onrender.com';
   const configured = String(import.meta.env.VITE_API_URL ?? '').trim();
   if (!configured) {
+    if (!isLocalRuntimeHost() && isVercelRuntimeHost()) {
+      return renderProductionApi;
+    }
     return '/api';
   }
 
   // Ignore localhost API URLs in production deployments.
   if (!isLocalRuntimeHost() && isLoopbackUrl(configured)) {
+    if (isVercelRuntimeHost()) {
+      return renderProductionApi;
+    }
     return '/api';
   }
 
