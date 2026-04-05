@@ -47,11 +47,21 @@ class MigrationAsyncProcessorTest {
     @Mock
     private YouTubeMusicClient youTubeMusicClient;
 
+    @Mock
+    private TrackMatchCacheService trackMatchCacheService;
+
     private MigrationAsyncProcessor processor;
 
     @BeforeEach
     void setUp() {
-        processor = new MigrationAsyncProcessor(jobRepository, trackRepository, spotifyClient, youTubeClient, youTubeMusicClient);
+        processor = new MigrationAsyncProcessor(
+            jobRepository,
+            trackRepository,
+            spotifyClient,
+            youTubeClient,
+            youTubeMusicClient,
+            trackMatchCacheService
+        );
     }
 
     @Test

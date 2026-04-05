@@ -8,8 +8,23 @@ create table if not exists migration_jobs (
     total_tracks integer not null default 0,
     matched_tracks integer not null default 0,
     failed_tracks integer not null default 0,
+    last_processed_index integer not null default 0,
+    paused_reason text,
+    quota_units_estimated integer,
+    next_retry_time timestamptz,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
+);
+
+create table if not exists track_match_cache (
+    id bigserial primary key,
+    user_id uuid,
+    track_title text not null,
+    artist text not null,
+    normalized_track_title text not null,
+    normalized_artist text not null,
+    youtube_video_id text not null,
+    created_at timestamptz not null default now()
 );
 
 create table if not exists migration_tracks (
@@ -38,3 +53,4 @@ alter table if exists migration_tracks add column if not exists youtube_title te
 alter table if exists migration_tracks add column if not exists match_score double precision;
 
 create index if not exists idx_migration_tracks_job_id on migration_tracks(job_id);
+create index if not exists idx_track_match_cache_lookup on track_match_cache(user_id, normalized_track_title, normalized_artist);

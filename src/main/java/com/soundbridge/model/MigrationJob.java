@@ -53,6 +53,18 @@ public class MigrationJob {
     @Column(name = "failed_tracks", nullable = false)
     private int failedTracks;
 
+    @Column(name = "last_processed_index", nullable = false)
+    private int lastProcessedIndex;
+
+    @Column(name = "paused_reason", length = 1024)
+    private String pausedReason;
+
+    @Column(name = "quota_units_estimated")
+    private Integer quotaUnitsEstimated;
+
+    @Column(name = "next_retry_time")
+    private Instant nextRetryTime;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -174,6 +186,38 @@ public class MigrationJob {
 
     public void setFailedTracks(int failedTracks) {
         this.failedTracks = failedTracks;
+    }
+
+    public int getLastProcessedIndex() {
+        return lastProcessedIndex;
+    }
+
+    public void setLastProcessedIndex(int lastProcessedIndex) {
+        this.lastProcessedIndex = lastProcessedIndex;
+    }
+
+    public String getPausedReason() {
+        return pausedReason;
+    }
+
+    public void setPausedReason(String pausedReason) {
+        this.pausedReason = pausedReason;
+    }
+
+    public Integer getQuotaUnitsEstimated() {
+        return quotaUnitsEstimated;
+    }
+
+    public void setQuotaUnitsEstimated(Integer quotaUnitsEstimated) {
+        this.quotaUnitsEstimated = quotaUnitsEstimated;
+    }
+
+    public Instant getNextRetryTime() {
+        return nextRetryTime;
+    }
+
+    public void setNextRetryTime(Instant nextRetryTime) {
+        this.nextRetryTime = nextRetryTime;
     }
 
     public Instant getCreatedAt() {

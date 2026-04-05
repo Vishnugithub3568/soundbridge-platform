@@ -5,6 +5,7 @@ import com.soundbridge.client.SpotifyTrack;
 import com.soundbridge.client.YouTubeCandidate;
 import com.soundbridge.client.YouTubeClient;
 import com.soundbridge.client.YouTubeMusicClient;
+import com.soundbridge.exception.QuotaExceededException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
@@ -29,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpStatusCodeException;
 
 @Service
 @SuppressWarnings("null")
@@ -43,12 +45,18 @@ public class MigrationAsyncProcessor {
     private static final String NO_CANDIDATE_FALLBACK_REASON =
         "SAFE_FALLBACK: no candidates returned, linked YouTube Music search result";
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
+    private static final int BATCH_SIZE = 20;
+    private static final int QUOTA_UNITS_PER_SPOTIFY_TO_YOUTUBE_TRACK = 101;
+    private static final int YOUTUBE_PLAYLIST_CREATE_UNITS = 50;
+    private static final String QUOTA_PAUSED_REASON =
+        "YouTube API quota exceeded. Migration is paused and can be resumed after quota reset.";
 
     private final MigrationJobRepository jobRepository;
     private final MigrationTrackRepository trackRepository;
     private final SpotifyClient spotifyClient;
     private final YouTubeClient youTubeClient;
     private final YouTubeMusicClient youTubeMusicClient;
+    private final TrackMatchCacheService trackMatchCacheService;
     private final double matchThreshold;
     private final double retryMatchThreshold;
 
@@ -59,6 +67,7 @@ public class MigrationAsyncProcessor {
         SpotifyClient spotifyClient,
         YouTubeClient youTubeClient,
         YouTubeMusicClient youTubeMusicClient,
+        TrackMatchCacheService trackMatchCacheService,
         @Value("${youtube.match.threshold:0.65}") double matchThreshold,
         @Value("${youtube.retry.match.threshold:0.40}") double retryMatchThreshold
     ) {
@@ -67,6 +76,7 @@ public class MigrationAsyncProcessor {
         this.spotifyClient = spotifyClient;
         this.youTubeClient = youTubeClient;
         this.youTubeMusicClient = youTubeMusicClient;
+        this.trackMatchCacheService = trackMatchCacheService;
         this.matchThreshold = matchThreshold;
         this.retryMatchThreshold = retryMatchThreshold;
     }
@@ -76,9 +86,10 @@ public class MigrationAsyncProcessor {
         MigrationTrackRepository trackRepository,
         SpotifyClient spotifyClient,
         YouTubeClient youTubeClient,
-        YouTubeMusicClient youTubeMusicClient
+        YouTubeMusicClient youTubeMusicClient,
+        TrackMatchCacheService trackMatchCacheService
     ) {
-        this(jobRepository, trackRepository, spotifyClient, youTubeClient, youTubeMusicClient, 0.65, 0.40);
+        this(jobRepository, trackRepository, spotifyClient, youTubeClient, youTubeMusicClient, trackMatchCacheService, 0.65, 0.40);
     }
 
     public void processMigration(UUID jobId) {
@@ -87,11 +98,10 @@ public class MigrationAsyncProcessor {
             return;
         }
 
-        int matched = 0;
-        int failed = 0;
-
         try {
             job.setStatus(JobStatus.RUNNING);
+            job.setPausedReason(null);
+            job.setNextRetryTime(null);
             jobRepository.saveAndFlush(job);
 
             boolean spotifyDestination = isSpotifyDestination(job);
@@ -107,6 +117,8 @@ public class MigrationAsyncProcessor {
                 sourceTracks = List.of();
             }
 
+            job.setQuotaUnitsEstimated(estimateQuotaUnits(spotifyDestination, sourceTracks.size()));
+
             String targetPlaylistId = Objects.requireNonNullElse(job.getTargetPlaylistId(), "").trim();
             if (targetPlaylistId.isBlank()) {
                 targetPlaylistId = createTargetPlaylist(job, spotifyDestination, targetAccessToken);
@@ -115,60 +127,72 @@ public class MigrationAsyncProcessor {
             }
 
             job.setTotalTracks(sourceTracks.size());
-            job.setMatchedTracks(0);
-            job.setFailedTracks(0);
+            int startIndex = Math.max(0, Math.min(job.getLastProcessedIndex(), sourceTracks.size()));
+
+            if (startIndex == 0) {
+                job.setMatchedTracks(0);
+                job.setFailedTracks(0);
+            }
             jobRepository.saveAndFlush(job);
 
-            for (SpotifyTrack sourceTrack : sourceTracks) {
-                if (sourceTrack == null) {
-                    failed++;
-                    job.setFailedTracks(failed);
+            for (int batchStart = startIndex; batchStart < sourceTracks.size(); batchStart += BATCH_SIZE) {
+                int batchEnd = Math.min(sourceTracks.size(), batchStart + BATCH_SIZE);
+
+                for (int trackIndex = batchStart; trackIndex < batchEnd; trackIndex++) {
+                    SpotifyTrack sourceTrack = sourceTracks.get(trackIndex);
+                    if (sourceTrack == null) {
+                        job.setFailedTracks(job.getFailedTracks() + 1);
+                        job.setLastProcessedIndex(trackIndex + 1);
+                        jobRepository.saveAndFlush(job);
+                        continue;
+                    }
+
+                    MigrationTrack migrationTrack = new MigrationTrack();
+                    migrationTrack.setJob(job);
+                    migrationTrack.setSourceTrackName(Objects.requireNonNullElse(sourceTrack.name(), "Unknown Track"));
+                    migrationTrack.setSourceArtistName(Objects.requireNonNullElse(sourceTrack.artist(), "Unknown Artist"));
+                    migrationTrack.setSourceAlbumName(sourceTrack.album());
+
+                    boolean matchedTrack = spotifyDestination
+                        ? processSpotifyDestinationTrack(migrationTrack, sourceTrack, targetPlaylistId, targetAccessToken)
+                        : processYouTubeDestinationTrack(job, migrationTrack, sourceTrack, targetPlaylistId, targetAccessToken);
+
+                    if (matchedTrack) {
+                        job.setMatchedTracks(job.getMatchedTracks() + 1);
+                    } else {
+                        job.setFailedTracks(job.getFailedTracks() + 1);
+                    }
+
+                    trackRepository.save(migrationTrack);
+                    job.setLastProcessedIndex(trackIndex + 1);
                     jobRepository.saveAndFlush(job);
-                    continue;
-                }
 
-                MigrationTrack migrationTrack = new MigrationTrack();
-                migrationTrack.setJob(job);
-                migrationTrack.setSourceTrackName(Objects.requireNonNullElse(sourceTrack.name(), "Unknown Track"));
-                migrationTrack.setSourceArtistName(Objects.requireNonNullElse(sourceTrack.artist(), "Unknown Artist"));
-                migrationTrack.setSourceAlbumName(sourceTrack.album());
-
-                boolean matchedTrack;
-                matchedTrack = spotifyDestination
-                    ? processSpotifyDestinationTrack(migrationTrack, sourceTrack, targetPlaylistId, targetAccessToken)
-                    : processYouTubeDestinationTrack(migrationTrack, sourceTrack, targetPlaylistId, targetAccessToken);
-
-                if (matchedTrack) {
-                    matched++;
-                }
-
-                if (!matchedTrack) {
-                    failed++;
-                }
-
-                trackRepository.save(migrationTrack);
-
-                job.setMatchedTracks(matched);
-                job.setFailedTracks(failed);
-                jobRepository.saveAndFlush(job);
-
-                try {
-                    Thread.sleep(150);
-                } catch (InterruptedException interruptedException) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("Migration processing interrupted", interruptedException);
+                    try {
+                        Thread.sleep(150);
+                    } catch (InterruptedException interruptedException) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException("Migration processing interrupted", interruptedException);
+                    }
                 }
             }
 
             job.setStatus(JobStatus.COMPLETED);
+            job.setPausedReason(null);
+            job.setNextRetryTime(null);
             jobRepository.saveAndFlush(job);
+        } catch (QuotaExceededException ex) {
+            job.setStatus(JobStatus.QUOTA_PAUSED);
+            job.setPausedReason(QUOTA_PAUSED_REASON);
+            job.setNextRetryTime(Instant.now().plusSeconds(24L * 60L * 60L));
+            jobRepository.saveAndFlush(job);
+            log.warn("Migration job {} paused because YouTube quota was exhausted", jobId);
         } catch (Exception ex) {
-            int unresolved = Math.max(0, job.getTotalTracks() - matched - failed);
+            int unresolved = Math.max(0, job.getTotalTracks() - job.getLastProcessedIndex());
             if (unresolved > 0) {
-                failed += unresolved;
+                job.setFailedTracks(job.getFailedTracks() + unresolved);
             }
 
-            if (job.getTotalTracks() == 0 && failed == 0) {
+            if (job.getTotalTracks() == 0 && job.getFailedTracks() == 0) {
                 MigrationTrack setupFailure = new MigrationTrack();
                 setupFailure.setJob(job);
                 setupFailure.setSourceTrackName("Migration Setup Failed");
@@ -176,11 +200,9 @@ public class MigrationAsyncProcessor {
                 markTrackAsFailed(setupFailure, "FAILED: " + summarizeError(ex));
                 trackRepository.save(setupFailure);
                 job.setTotalTracks(1);
-                failed = 1;
+                job.setFailedTracks(1);
             }
 
-            job.setMatchedTracks(matched);
-            job.setFailedTracks(failed);
             job.setStatus(JobStatus.FAILED);
             jobRepository.saveAndFlush(job);
             log.error("Migration job {} failed during processing", jobId, ex);
@@ -195,6 +217,8 @@ public class MigrationAsyncProcessor {
 
         try {
             job.setStatus(JobStatus.RUNNING);
+            job.setPausedReason(null);
+            job.setNextRetryTime(null);
             jobRepository.saveAndFlush(job);
 
             boolean spotifyDestination = isSpotifyDestination(job);
@@ -228,7 +252,7 @@ public class MigrationAsyncProcessor {
 
                 boolean matchedTrack = spotifyDestination
                     ? processSpotifyDestinationTrack(track, sourceTrack, targetPlaylistId, targetAccessToken)
-                    : processYouTubeDestinationTrack(track, sourceTrack, targetPlaylistId, targetAccessToken);
+                    : processYouTubeDestinationTrack(job, track, sourceTrack, targetPlaylistId, targetAccessToken);
 
                 if (matchedTrack && track.getMatchStatus() == TrackMatchStatus.MATCHED) {
                     track.setFailureReason(null);
@@ -247,6 +271,13 @@ public class MigrationAsyncProcessor {
             refreshJobCounters(job);
             job.setStatus(JobStatus.COMPLETED);
             jobRepository.saveAndFlush(job);
+        } catch (QuotaExceededException ex) {
+            refreshJobCounters(job);
+            job.setStatus(JobStatus.QUOTA_PAUSED);
+            job.setPausedReason(QUOTA_PAUSED_REASON);
+            job.setNextRetryTime(Instant.now().plusSeconds(24L * 60L * 60L));
+            jobRepository.saveAndFlush(job);
+            log.warn("Migration job {} paused during retry because YouTube quota was exhausted", jobId);
         } catch (Exception ex) {
             refreshJobCounters(job);
             job.setStatus(JobStatus.FAILED);
@@ -381,19 +412,33 @@ public class MigrationAsyncProcessor {
     }
 
     private boolean processYouTubeDestinationTrack(
+        MigrationJob job,
         MigrationTrack migrationTrack,
         SpotifyTrack sourceTrack,
         String targetPlaylistId,
         String googleAccessToken
     ) {
         try {
-            List<YouTubeCandidate> candidates = youTubeClient.searchCandidates(sourceTrack);
-            boolean matchedTrack = applyCandidateMatch(migrationTrack, sourceTrack, candidates, matchThreshold);
-            if (!matchedTrack) {
-                return false;
+            String videoId = trackMatchCacheService.findCachedVideoId(job.getUserId(), sourceTrack).orElse("").trim();
+            if (videoId.isBlank()) {
+                List<YouTubeCandidate> candidates = youTubeClient.searchCandidates(sourceTrack);
+                boolean matchedTrack = applyCandidateMatch(migrationTrack, sourceTrack, candidates, matchThreshold);
+                if (!matchedTrack) {
+                    return false;
+                }
+                videoId = Objects.requireNonNullElse(migrationTrack.getYouTubeVideoId(), "").trim();
+            } else {
+                migrationTrack.setConfidenceScore(1.0);
+                migrationTrack.setMatchScore(1.0);
+                migrationTrack.setTargetTrackId(videoId);
+                migrationTrack.setTargetTrackUrl("https://music.youtube.com/watch?v=" + videoId);
+                migrationTrack.setTargetTrackTitle(Objects.requireNonNullElse(sourceTrack.name(), "") + " (Cached Match)");
+                migrationTrack.setYouTubeTitle(migrationTrack.getTargetTrackTitle());
+                migrationTrack.setYouTubeVideoId(videoId);
+                migrationTrack.setMatchStatus(TrackMatchStatus.MATCHED);
+                migrationTrack.setFailureReason(null);
             }
 
-            String videoId = Objects.requireNonNullElse(migrationTrack.getYouTubeVideoId(), "").trim();
             if (videoId.isBlank()) {
                 markTrackAsPartial(
                     migrationTrack,
@@ -402,11 +447,16 @@ public class MigrationAsyncProcessor {
                 return true;
             }
 
+            trackMatchCacheService.storeMatch(job.getUserId(), sourceTrack, videoId);
+
             try {
                 youTubeClient.addVideoToPlaylist(googleAccessToken, targetPlaylistId, videoId);
                 migrationTrack.setMatchStatus(TrackMatchStatus.MATCHED);
                 migrationTrack.setFailureReason(null);
             } catch (RuntimeException ex) {
+                if (isQuotaExceeded(ex)) {
+                    throw new QuotaExceededException(QUOTA_PAUSED_REASON, ex);
+                }
                 markTrackAsPartial(
                     migrationTrack,
                     "PARTIAL: matched for review, but could not add track to YouTube playlist: " + summarizeError(ex)
@@ -415,6 +465,9 @@ public class MigrationAsyncProcessor {
 
             return true;
         } catch (RuntimeException ex) {
+            if (isQuotaExceeded(ex)) {
+                throw new QuotaExceededException(QUOTA_PAUSED_REASON, ex);
+            }
             applySearchFallbackMatch(
                 migrationTrack,
                 sourceTrack,
@@ -428,6 +481,35 @@ public class MigrationAsyncProcessor {
             );
             return true;
         }
+    }
+
+    private int estimateQuotaUnits(boolean spotifyDestination, int sourceTrackCount) {
+        if (spotifyDestination) {
+            return Math.max(0, sourceTrackCount * 2);
+        }
+
+        return YOUTUBE_PLAYLIST_CREATE_UNITS + (Math.max(0, sourceTrackCount) * QUOTA_UNITS_PER_SPOTIFY_TO_YOUTUBE_TRACK);
+    }
+
+    private boolean isQuotaExceeded(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = Objects.requireNonNullElse(current.getMessage(), "").toLowerCase(Locale.ROOT);
+            if (message.contains("quota") && (message.contains("exceeded") || message.contains("exhausted"))) {
+                return true;
+            }
+
+            if (current instanceof HttpStatusCodeException statusCodeException) {
+                String body = Objects.requireNonNullElse(statusCodeException.getResponseBodyAsString(), "").toLowerCase(Locale.ROOT);
+                if (statusCodeException.getStatusCode().value() == 403 && body.contains("quota")) {
+                    return true;
+                }
+            }
+
+            current = current.getCause();
+        }
+
+        return false;
     }
 
     private boolean processSpotifyDestinationTrack(

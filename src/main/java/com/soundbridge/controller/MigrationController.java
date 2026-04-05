@@ -2,6 +2,7 @@ package com.soundbridge.controller;
 
 import com.soundbridge.dto.CreateMigrationRequest;
 import com.soundbridge.dto.MigrationJobResponse;
+import com.soundbridge.dto.MigrationQuotaEstimateResponse;
 import com.soundbridge.dto.MigrationPreflightRequest;
 import com.soundbridge.dto.MigrationPreflightResponse;
 import com.soundbridge.dto.MigrationReportResponse;
@@ -47,6 +48,16 @@ public class MigrationController {
         return migrationService.preflight(request);
     }
 
+    @GetMapping("/migrate/quota-estimate")
+    public MigrationQuotaEstimateResponse estimateQuota(
+        @RequestParam(defaultValue = "SPOTIFY_TO_YOUTUBE") String direction,
+        @RequestParam String sourcePlaylistUrl,
+        @RequestParam(required = false) String spotifyAccessToken,
+        @RequestParam(required = false) String googleAccessToken
+    ) {
+        return migrationService.estimateQuota(direction, sourcePlaylistUrl, spotifyAccessToken, googleAccessToken);
+    }
+
     @GetMapping("/migrate/{jobId}")
     public MigrationJobResponse getMigrationJob(@PathVariable UUID jobId) {
         return migrationService.getJob(jobId);
@@ -73,6 +84,12 @@ public class MigrationController {
     @PostMapping("/migrate/{jobId}/retry-failed")
     public ResponseEntity<MigrationJobResponse> retryFailedTracks(@PathVariable UUID jobId) {
         MigrationJobResponse response = migrationService.retryFailedTracks(jobId);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
+    }
+
+    @PostMapping("/migrate/{jobId}/resume")
+    public ResponseEntity<MigrationJobResponse> resumeMigration(@PathVariable UUID jobId) {
+        MigrationJobResponse response = migrationService.resumeJob(jobId);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
     }
 

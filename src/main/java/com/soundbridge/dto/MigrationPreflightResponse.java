@@ -10,6 +10,10 @@ public record MigrationPreflightResponse(
     String targetPlatform,
     String playlistId,
     List<String> blockers,
-    List<String> recommendations
+    List<String> recommendations,
+    int estimatedTracks,
+    int estimatedQuotaUnits,
+    boolean quotaWarning,
+    String quotaWarningMessage
 ) {
 }

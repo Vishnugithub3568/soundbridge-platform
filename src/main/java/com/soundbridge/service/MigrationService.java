@@ -2,10 +2,12 @@ package com.soundbridge.service;
 
 import com.soundbridge.dto.CreateMigrationRequest;
 import com.soundbridge.dto.MigrationJobResponse;
+import com.soundbridge.dto.MigrationQuotaEstimateResponse;
 import com.soundbridge.dto.MigrationPreflightRequest;
 import com.soundbridge.dto.MigrationPreflightResponse;
 import com.soundbridge.dto.MigrationReportResponse;
 import com.soundbridge.dto.MigrationTrackResponse;
+import com.soundbridge.client.SpotifyClient;
 import com.soundbridge.client.YouTubeMusicClient;
 import com.soundbridge.exception.MigrationException;
 import com.soundbridge.model.JobStatus;
@@ -30,12 +32,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class MigrationService {
 
     private static final Pattern SPOTIFY_PLAYLIST_PATTERN = Pattern.compile("open\\.spotify\\.com/playlist/([A-Za-z0-9]+)");
+    private static final int QUOTA_WARNING_THRESHOLD_UNITS = 8000;
+    private static final int YOUTUBE_PLAYLIST_CREATE_UNITS = 50;
+    private static final int SPOTIFY_TO_YOUTUBE_PER_TRACK_UNITS = 101;
+    private static final int YOUTUBE_TO_SPOTIFY_PER_TRACK_UNITS = 2;
 
     private final MigrationJobRepository jobRepository;
     private final MigrationTrackRepository trackRepository;
     private final MigrationAsyncProcessor migrationAsyncProcessor;
     private final ApplicationContext applicationContext;
     private final GoogleOAuthService googleOAuthService;
+    private final SpotifyClient spotifyClient;
     private final YouTubeMusicClient youTubeMusicClient;
 
     public MigrationService(
@@ -44,6 +51,7 @@ public class MigrationService {
         MigrationAsyncProcessor migrationAsyncProcessor,
         ApplicationContext applicationContext,
         GoogleOAuthService googleOAuthService,
+        SpotifyClient spotifyClient,
         YouTubeMusicClient youTubeMusicClient
     ) {
         this.jobRepository = jobRepository;
@@ -51,6 +59,7 @@ public class MigrationService {
         this.migrationAsyncProcessor = migrationAsyncProcessor;
         this.applicationContext = applicationContext;
         this.googleOAuthService = googleOAuthService;
+        this.spotifyClient = spotifyClient;
         this.youTubeMusicClient = youTubeMusicClient;
     }
 
@@ -135,6 +144,15 @@ public class MigrationService {
         }
 
         boolean readyToStart = validUrl && blockers.isEmpty();
+        MigrationQuotaEstimateResponse quotaEstimate = estimateQuotaInternal(
+            direction,
+            sourcePlaylistUrl,
+            spotifyAccessToken,
+            googleAccessToken
+        );
+        if (quotaEstimate.warning()) {
+            recommendations.add(quotaEstimate.warningMessage());
+        }
 
         return new MigrationPreflightResponse(
             validUrl,
@@ -144,8 +162,21 @@ public class MigrationService {
             targetPlatform,
             playlistId,
             blockers,
-            recommendations
+            recommendations,
+            quotaEstimate.totalTracks(),
+            quotaEstimate.estimatedQuotaUnits(),
+            quotaEstimate.warning(),
+            quotaEstimate.warningMessage()
         );
+    }
+
+    public MigrationQuotaEstimateResponse estimateQuota(
+        String direction,
+        String sourcePlaylistUrl,
+        String spotifyAccessToken,
+        String googleAccessToken
+    ) {
+        return estimateQuotaInternal(direction, sourcePlaylistUrl, spotifyAccessToken, googleAccessToken);
     }
 
     private MigrationJobResponse startSpotifyToYouTubeMigration(CreateMigrationRequest request) {
@@ -175,6 +206,10 @@ public class MigrationService {
         job.setTotalTracks(0);
         job.setMatchedTracks(0);
         job.setFailedTracks(0);
+        job.setLastProcessedIndex(0);
+        job.setPausedReason(null);
+        job.setQuotaUnitsEstimated(null);
+        job.setNextRetryTime(null);
         job = jobRepository.saveAndFlush(job);
 
         UUID jobId = job.getId();
@@ -215,6 +250,10 @@ public class MigrationService {
         job.setTotalTracks(0);
         job.setMatchedTracks(0);
         job.setFailedTracks(0);
+        job.setLastProcessedIndex(0);
+        job.setPausedReason(null);
+        job.setQuotaUnitsEstimated(null);
+        job.setNextRetryTime(null);
         job = jobRepository.saveAndFlush(job);
 
         UUID jobId = job.getId();
@@ -248,6 +287,10 @@ public class MigrationService {
         job.setTotalTracks(0);
         job.setMatchedTracks(0);
         job.setFailedTracks(0);
+        job.setLastProcessedIndex(0);
+        job.setPausedReason(null);
+        job.setQuotaUnitsEstimated(null);
+        job.setNextRetryTime(null);
         job = jobRepository.saveAndFlush(job);
 
         UUID jobId = job.getId();
@@ -277,6 +320,24 @@ public class MigrationService {
         job.setStatus(JobStatus.QUEUED);
         jobRepository.saveAndFlush(job);
         applicationContext.getBean(MigrationService.class).retryFailedTracksAsync(jobId);
+        return MigrationJobResponse.from(job);
+    }
+
+    public MigrationJobResponse resumeJob(UUID jobId) {
+        MigrationJob job = getJobEntity(jobId);
+        if (job.getStatus() == JobStatus.RUNNING || job.getStatus() == JobStatus.QUEUED) {
+            throw new MigrationException("Migration job is already in progress", "JOB_IN_PROGRESS", 409);
+        }
+
+        if (job.getStatus() != JobStatus.QUOTA_PAUSED) {
+            throw new MigrationException("Only quota-paused jobs can be resumed", "JOB_NOT_QUOTA_PAUSED", 409);
+        }
+
+        job.setStatus(JobStatus.QUEUED);
+        job.setPausedReason(null);
+        job.setNextRetryTime(null);
+        jobRepository.saveAndFlush(job);
+        applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId);
         return MigrationJobResponse.from(job);
     }
 
@@ -349,6 +410,55 @@ public class MigrationService {
         }
 
         return "";
+    }
+
+    private MigrationQuotaEstimateResponse estimateQuotaInternal(
+        String direction,
+        String sourcePlaylistUrl,
+        String spotifyAccessToken,
+        String googleAccessToken
+    ) {
+        String normalizedDirection = Objects.requireNonNullElse(direction, "SPOTIFY_TO_YOUTUBE").trim();
+        String normalizedUrl = Objects.requireNonNullElse(sourcePlaylistUrl, "").trim();
+        String normalizedSpotifyToken = Objects.requireNonNullElse(spotifyAccessToken, "").trim();
+        String normalizedGoogleToken = Objects.requireNonNullElse(googleAccessToken, "").trim();
+
+        int totalTracks = 0;
+        int estimatedUnits = 0;
+        String warningMessage = "";
+
+        try {
+            if ("SPOTIFY_TO_YOUTUBE".equalsIgnoreCase(normalizedDirection) && !normalizedUrl.isBlank()) {
+                totalTracks = spotifyClient.fetchPlaylistTracks(
+                    normalizedUrl,
+                    normalizedSpotifyToken.isBlank() ? null : normalizedSpotifyToken
+                ).size();
+                estimatedUnits = YOUTUBE_PLAYLIST_CREATE_UNITS + (totalTracks * SPOTIFY_TO_YOUTUBE_PER_TRACK_UNITS);
+            } else if ("YOUTUBE_TO_SPOTIFY".equalsIgnoreCase(normalizedDirection) && !normalizedUrl.isBlank()) {
+                if (normalizedGoogleToken.isBlank()) {
+                    warningMessage = "Google login is required to estimate source playlist size for YouTube migrations.";
+                } else {
+                    totalTracks = youTubeMusicClient.fetchPlaylistTracks(normalizedUrl, normalizedGoogleToken).size();
+                    estimatedUnits = totalTracks * YOUTUBE_TO_SPOTIFY_PER_TRACK_UNITS;
+                }
+            }
+        } catch (RuntimeException ex) {
+            warningMessage = "Unable to estimate quota right now: " + ex.getMessage();
+        }
+
+        boolean warning = estimatedUnits >= QUOTA_WARNING_THRESHOLD_UNITS || !warningMessage.isBlank();
+        if (warningMessage.isBlank() && estimatedUnits >= QUOTA_WARNING_THRESHOLD_UNITS) {
+            warningMessage = "This playlist is large and may hit YouTube daily quota limits."
+                + " Progress can be paused and resumed automatically.";
+        }
+
+        return new MigrationQuotaEstimateResponse(
+            normalizedDirection,
+            Math.max(0, totalTracks),
+            Math.max(0, estimatedUnits),
+            warning,
+            warningMessage
+        );
     }
 
     private void ensureJobExists(UUID jobId) {

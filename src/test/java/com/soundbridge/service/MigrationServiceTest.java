@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.soundbridge.exception.MigrationException;
+import com.soundbridge.client.SpotifyClient;
 import com.soundbridge.client.YouTubeMusicClient;
 import com.soundbridge.model.JobStatus;
 import com.soundbridge.model.MigrationJob;
@@ -41,6 +42,9 @@ class MigrationServiceTest {
     private GoogleOAuthService googleOAuthService;
 
     @Mock
+    private SpotifyClient spotifyClient;
+
+    @Mock
     private YouTubeMusicClient youTubeMusicClient;
 
     private MigrationService migrationService;
@@ -53,6 +57,7 @@ class MigrationServiceTest {
             migrationAsyncProcessor,
             applicationContext,
             googleOAuthService,
+            spotifyClient,
             youTubeMusicClient
         );
     }
