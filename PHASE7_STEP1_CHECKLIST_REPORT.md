@@ -6,14 +6,14 @@ Scope: BUILD_PHASE_PRD.md Phase 7 Step 1 checklist (7 scenarios)
 
 ## Summary
 - Total scenarios: 7
-- Passed: 4
-- Failed: 3
-- Overall result: PARTIAL PASS (environment blockers remain before release readiness)
+- Passed: 5
+- Failed: 2
+- Overall result: PARTIAL PASS (OAuth-token blockers remain before release readiness)
 
 ## External Action Status
-- Render env update + redeploy: BLOCKED from this workspace session (no Render API token/dashboard access available to agent).
-- Requested value to set in Render backend env:
-  - `CORS_ALLOWED_ORIGINS` must include `https://soundbridge.vercel.app`
+- Render env update + redeploy: COMPLETED by operator outside this session.
+- Verified required env value:
+  - `CORS_ALLOWED_ORIGINS` includes `https://soundbridge.vercel.app`
 
 ## Checklist Results
 
@@ -52,14 +52,12 @@ Scope: BUILD_PHASE_PRD.md Phase 7 Step 1 checklist (7 scenarios)
 - Notes: User guidance for token recovery is functioning.
 
 7. CORS behavior from Vercel domain only
-- Status: FAIL
+- Status: PASS
 - Evidence:
   - Focused verification run against deployed Render backend: `https://soundbridge-platform.onrender.com/health`.
-  - Actual active Vercel domain identified as `https://soundbridge.vercel.app` (200 on root check).
-  - OPTIONS preflight from `https://soundbridge.vercel.app` returned `403` with empty `Access-Control-Allow-Origin`.
-  - OPTIONS preflight from `https://evil.example.com` also returned `403` with empty `Access-Control-Allow-Origin`.
-  - Re-verified after this request: same result (`403`, empty `ACAO` for both origins).
-- Notes: Deployed CORS policy currently blocks both tested origins, including the active Vercel domain.
+  - Active Vercel origin `https://soundbridge.vercel.app` returned `200` with `Access-Control-Allow-Origin: https://soundbridge.vercel.app`.
+  - Control origin `https://evil.example.com` returned `403` with empty `Access-Control-Allow-Origin`.
+- Notes: Deployed CORS policy now allows the active Vercel frontend origin and rejects non-allowlisted origins.
 
 ## Raw Evidence Snippets
 - Smoke baseline remained healthy earlier in session: /health, /diagnose, /migrate/history, /migrate/preflight passed.
@@ -72,16 +70,15 @@ Scope: BUILD_PHASE_PRD.md Phase 7 Step 1 checklist (7 scenarios)
   - `retryResponseStatus=QUEUED`
 - Deployed CORS rerun evidence:
   - Backend: `https://soundbridge-platform.onrender.com/health`
-  - Origin `https://soundbridge.vercel.app`: `403`, `ACAO=`
+  - Origin `https://soundbridge.vercel.app`: `200`, `ACAO=https://soundbridge.vercel.app`
   - Origin `https://evil.example.com`: `403`, `ACAO=`
 
 ## Exit Criteria Impact
-Phase 7 Step 1 is not fully complete for release readiness because scenarios 1, 3, and 7 did not pass.
+Phase 7 Step 1 is not fully complete for release readiness because scenarios 1 and 3 still require valid OAuth tokens.
 
 ## Recommended Next Actions
 1. Use real OAuth tokens (Google + Spotify) and rerun scenarios 1 and 3.
-2. Update deployed `CORS_ALLOWED_ORIGINS` to include `https://soundbridge.vercel.app`, redeploy Render backend, and rerun scenario 7.
-3. Re-run this full checklist after env fixes and update this report with final pass state.
+2. Re-run the full checklist after OAuth access is available and update this report with final pass state.
 
 ## Operator Commands (Render)
 Use these exact actions in Render dashboard for backend service `soundbridge-platform`:
