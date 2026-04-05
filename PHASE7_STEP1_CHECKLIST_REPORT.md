@@ -10,6 +10,11 @@ Scope: BUILD_PHASE_PRD.md Phase 7 Step 1 checklist (7 scenarios)
 - Failed: 3
 - Overall result: PARTIAL PASS (environment blockers remain before release readiness)
 
+## External Action Status
+- Render env update + redeploy: BLOCKED from this workspace session (no Render API token/dashboard access available to agent).
+- Requested value to set in Render backend env:
+  - `CORS_ALLOWED_ORIGINS` must include `https://soundbridge.vercel.app`
+
 ## Checklist Results
 
 1. Spotify -> YouTube migration with public playlist
@@ -53,6 +58,7 @@ Scope: BUILD_PHASE_PRD.md Phase 7 Step 1 checklist (7 scenarios)
   - Actual active Vercel domain identified as `https://soundbridge.vercel.app` (200 on root check).
   - OPTIONS preflight from `https://soundbridge.vercel.app` returned `403` with empty `Access-Control-Allow-Origin`.
   - OPTIONS preflight from `https://evil.example.com` also returned `403` with empty `Access-Control-Allow-Origin`.
+  - Re-verified after this request: same result (`403`, empty `ACAO` for both origins).
 - Notes: Deployed CORS policy currently blocks both tested origins, including the active Vercel domain.
 
 ## Raw Evidence Snippets
@@ -76,3 +82,13 @@ Phase 7 Step 1 is not fully complete for release readiness because scenarios 1, 
 1. Use real OAuth tokens (Google + Spotify) and rerun scenarios 1 and 3.
 2. Update deployed `CORS_ALLOWED_ORIGINS` to include `https://soundbridge.vercel.app`, redeploy Render backend, and rerun scenario 7.
 3. Re-run this full checklist after env fixes and update this report with final pass state.
+
+## Operator Commands (Render)
+Use these exact actions in Render dashboard for backend service `soundbridge-platform`:
+1. Environment:
+  - Set `CORS_ALLOWED_ORIGINS=https://soundbridge.vercel.app`
+  - If you need local preview too, use comma-separated values, e.g. `https://soundbridge.vercel.app,http://localhost:5173`
+2. Trigger manual redeploy of the latest commit.
+3. Verify with preflight check:
+  - `OPTIONS https://soundbridge-platform.onrender.com/health` with `Origin: https://soundbridge.vercel.app`
+  - Expect non-empty `Access-Control-Allow-Origin` matching `https://soundbridge.vercel.app`.
