@@ -1,6 +1,7 @@
 package com.soundbridge.dto;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public record DashboardOverviewResponse(
@@ -13,6 +14,7 @@ public record DashboardOverviewResponse(
     int runningJobs,
     int totalTracks,
     int connectedServices,
+    Map<String, Long> telemetryCounters,
     List<String> quickActions,
     List<DashboardServiceStatusResponse> services
 ) {

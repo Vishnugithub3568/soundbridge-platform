@@ -174,6 +174,14 @@ function historyStatusClass(status) {
   }
 }
 
+function formatTelemetryLabel(key) {
+  return String(key || '')
+    .split('_')
+    .filter(Boolean)
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(' ');
+}
+
 function isFallbackReason(reason) {
   const value = String(reason || '').trim();
   return value.startsWith('SAFE_FALLBACK:') || value.startsWith('LOW_CONFIDENCE_FALLBACK:');
@@ -824,12 +832,23 @@ function MigrationPage() {
   const dashboardServiceMap = new Map(
     (dashboardServices || []).map((service) => [String(service.service || ''), service])
   );
+  const telemetryStats = dashboardOverview && dashboardOverview.telemetryCounters
+    ? Object.entries(dashboardOverview.telemetryCounters)
+        .filter(([, value]) => Number.isFinite(Number(value)))
+        .slice(0, 4)
+        .map(([key, value]) => ({
+          label: formatTelemetryLabel(key),
+          value: Number(value)
+        }))
+    : [];
+
   const overviewStats = dashboardOverview
     ? [
         { label: 'Saved jobs', value: dashboardOverview.totalJobs },
         { label: 'Completed', value: dashboardOverview.completedJobs },
         { label: 'Failed', value: dashboardOverview.failedJobs },
-        { label: 'Connected services', value: connectedServiceCount }
+        { label: 'Connected services', value: connectedServiceCount },
+        ...telemetryStats
       ]
     : [
         { label: 'Saved jobs', value: jobHistory.length },

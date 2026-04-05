@@ -8,7 +8,10 @@ import com.soundbridge.model.MigrationJob;
 import com.soundbridge.model.User;
 import com.soundbridge.repository.MigrationJobRepository;
 import com.soundbridge.repository.UserRepository;
+import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
@@ -45,6 +48,30 @@ public class DashboardController {
         int runningJobs = (int) jobs.stream().filter(job -> job.getStatus() == JobStatus.RUNNING || job.getStatus() == JobStatus.QUEUED).count();
         int totalTracks = jobs.stream().mapToInt(MigrationJob::getTotalTracks).sum();
 
+        Instant now = Instant.now();
+        Instant telemetryWindowStart = now.minusSeconds(24L * 60L * 60L);
+        Map<String, Long> telemetryCounters = new LinkedHashMap<>();
+        telemetryCounters.put(
+            "jobs_last_24h",
+            jobs.stream().filter(job -> job.getUpdatedAt() != null && job.getUpdatedAt().isAfter(telemetryWindowStart)).count()
+        );
+        telemetryCounters.put(
+            "quota_paused_jobs",
+            jobs.stream().filter(job -> job.getStatus() == JobStatus.QUOTA_PAUSED).count()
+        );
+        telemetryCounters.put(
+            "retry_scheduled_jobs",
+            jobs.stream().filter(job -> job.getNextRetryTime() != null && job.getNextRetryTime().isAfter(now)).count()
+        );
+        telemetryCounters.put(
+            "processed_tracks",
+            jobs.stream().mapToLong(job -> Math.max(0, job.getMatchedTracks()) + Math.max(0, job.getFailedTracks())).sum()
+        );
+        telemetryCounters.put(
+            "retryable_tracks",
+            jobs.stream().mapToLong(job -> Math.max(0, job.getFailedTracks())).sum()
+        );
+
         List<DashboardServiceStatusResponse> services = List.of(
             new DashboardServiceStatusResponse("Spotify", true, "Connected", "OAuth active"),
             new DashboardServiceStatusResponse("YouTube Music", true, "Connected", "OAuth active")
@@ -60,6 +87,7 @@ public class DashboardController {
             runningJobs,
             totalTracks,
             services.size(),
+            telemetryCounters,
             List.of("Transfer", "Synchronize", "Generate", "Share"),
             services
         );
