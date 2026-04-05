@@ -22,7 +22,7 @@ function resolveApiBaseUrl() {
   const renderProductionApi = 'https://soundbridge-platform.onrender.com';
   const configured = String(import.meta.env.VITE_API_URL ?? '').trim();
   if (!configured) {
-    if (!isLocalRuntimeHost() && isVercelRuntimeHost()) {
+    if (!isLocalRuntimeHost()) {
       return renderProductionApi;
     }
     return '/api';
@@ -30,10 +30,12 @@ function resolveApiBaseUrl() {
 
   // Ignore localhost API URLs in production deployments.
   if (!isLocalRuntimeHost() && isLoopbackUrl(configured)) {
-    if (isVercelRuntimeHost()) {
-      return renderProductionApi;
-    }
-    return '/api';
+    return renderProductionApi;
+  }
+
+  // If production accidentally gets a relative API path, use the deployed backend.
+  if (!isLocalRuntimeHost() && configured.startsWith('/')) {
+    return renderProductionApi;
   }
 
   return configured;
