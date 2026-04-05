@@ -75,7 +75,7 @@ Build a Soundiiz-like migration experience for playlist transfer between Spotify
 - Phase 3: Completed
 - Phase 4: Completed (2026-04-05)
 - Phase 5: Completed (2026-04-05)
-- Phase 6: In progress (Step 1 completed)
+- Phase 6: In progress (Steps 1-2 completed)
 - Phase 7: Pending
 
 ## Phase 3: Server-Side Job History (Priority: High)
@@ -170,7 +170,7 @@ None.
 
 ### Implementation Steps
 1. Add deploy smoke checks script (health + migrate/preflight sanity). ✅ Completed on 2026-04-05 (`scripts/deploy-smoke-check.ps1`)
-2. Add structured logs for key migration stages.
+2. Add structured logs for key migration stages. ✅ Completed on 2026-04-05 (service + processor stage logs)
 3. Add runtime safeguards for rate-limit heavy loops.
 4. Add basic dashboard telemetry counters (if desired).
 

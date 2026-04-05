@@ -146,6 +146,7 @@ public class MigrationAsyncProcessor {
     public void processMigration(UUID jobId, boolean strictMode) {
         MigrationJob job = jobRepository.findById(jobId).orElse(null);
         if (job == null) {
+            log.warn("migration.stage=load-job status=missing jobId={}", jobId);
             return;
         }
 
@@ -154,6 +155,13 @@ public class MigrationAsyncProcessor {
             job.setPausedReason(null);
             job.setNextRetryTime(null);
             jobRepository.saveAndFlush(job);
+            log.info(
+                "migration.stage=started jobId={} strictMode={} targetPlatform={} userId={}",
+                jobId,
+                strictMode,
+                job.getTargetPlatform(),
+                job.getUserId()
+            );
 
             boolean spotifyDestination = isSpotifyDestination(job);
             String sourceAccessToken = spotifyDestination
@@ -167,6 +175,13 @@ public class MigrationAsyncProcessor {
             if (sourceTracks == null) {
                 sourceTracks = List.of();
             }
+            log.info(
+                "migration.stage=source-tracks-loaded jobId={} strictMode={} sourceCount={} spotifyDestination={}",
+                jobId,
+                strictMode,
+                sourceTracks.size(),
+                spotifyDestination
+            );
 
             job.setQuotaUnitsEstimated(estimateQuotaUnits(spotifyDestination, sourceTracks.size()));
 
@@ -175,6 +190,19 @@ public class MigrationAsyncProcessor {
                 targetPlaylistId = createTargetPlaylist(job, spotifyDestination, targetAccessToken);
                 job.setTargetPlaylistId(targetPlaylistId);
                 job.setTargetPlaylistUrl(buildTargetPlaylistUrl(spotifyDestination, targetPlaylistId));
+                log.info(
+                    "migration.stage=target-playlist-created jobId={} playlistId={} targetPlatform={}",
+                    jobId,
+                    targetPlaylistId,
+                    job.getTargetPlatform()
+                );
+            } else {
+                log.info(
+                    "migration.stage=target-playlist-reused jobId={} playlistId={} targetPlatform={}",
+                    jobId,
+                    targetPlaylistId,
+                    job.getTargetPlatform()
+                );
             }
 
             job.setTotalTracks(sourceTracks.size());
@@ -188,6 +216,14 @@ public class MigrationAsyncProcessor {
 
             for (int batchStart = startIndex; batchStart < sourceTracks.size(); batchStart += BATCH_SIZE) {
                 int batchEnd = Math.min(sourceTracks.size(), batchStart + BATCH_SIZE);
+                log.info(
+                    "migration.stage=batch-processing jobId={} strictMode={} batchStart={} batchEnd={} totalTracks={}",
+                    jobId,
+                    strictMode,
+                    batchStart,
+                    batchEnd,
+                    sourceTracks.size()
+                );
 
                 for (int trackIndex = batchStart; trackIndex < batchEnd; trackIndex++) {
                     SpotifyTrack sourceTrack = sourceTracks.get(trackIndex);
@@ -241,12 +277,27 @@ public class MigrationAsyncProcessor {
             job.setPausedReason(null);
             job.setNextRetryTime(null);
             jobRepository.saveAndFlush(job);
+            log.info(
+                "migration.stage=completed jobId={} strictMode={} matchedTracks={} failedTracks={} totalTracks={}",
+                jobId,
+                strictMode,
+                job.getMatchedTracks(),
+                job.getFailedTracks(),
+                job.getTotalTracks()
+            );
         } catch (QuotaExceededException ex) {
             job.setStatus(JobStatus.QUOTA_PAUSED);
             job.setPausedReason(QUOTA_PAUSED_REASON);
             job.setNextRetryTime(Instant.now().plusSeconds(24L * 60L * 60L));
             jobRepository.saveAndFlush(job);
-            log.warn("Migration job {} paused because YouTube quota was exhausted", jobId);
+            log.warn(
+                "migration.stage=paused-quota jobId={} strictMode={} matchedTracks={} failedTracks={} nextRetryTime={}",
+                jobId,
+                strictMode,
+                job.getMatchedTracks(),
+                job.getFailedTracks(),
+                job.getNextRetryTime()
+            );
         } catch (Exception ex) {
             int unresolved = Math.max(0, job.getTotalTracks() - job.getLastProcessedIndex());
             if (unresolved > 0) {
@@ -266,13 +317,23 @@ public class MigrationAsyncProcessor {
 
             job.setStatus(JobStatus.FAILED);
             jobRepository.saveAndFlush(job);
-            log.error("Migration job {} failed during processing", jobId, ex);
+            log.error(
+                "migration.stage=failed jobId={} strictMode={} matchedTracks={} failedTracks={} totalTracks={} reason={}",
+                jobId,
+                strictMode,
+                job.getMatchedTracks(),
+                job.getFailedTracks(),
+                job.getTotalTracks(),
+                summarizeError(ex),
+                ex
+            );
         }
     }
 
     public void retryFailedTracks(UUID jobId) {
         MigrationJob job = jobRepository.findById(jobId).orElse(null);
         if (job == null) {
+            log.warn("migration.stage=retry-load-job status=missing jobId={}", jobId);
             return;
         }
 
@@ -281,6 +342,12 @@ public class MigrationAsyncProcessor {
             job.setPausedReason(null);
             job.setNextRetryTime(null);
             jobRepository.saveAndFlush(job);
+            log.info(
+                "migration.stage=retry-started jobId={} targetPlatform={} userId={}",
+                jobId,
+                job.getTargetPlatform(),
+                job.getUserId()
+            );
 
             boolean spotifyDestination = isSpotifyDestination(job);
             String sourceAccessToken = spotifyDestination
@@ -296,6 +363,12 @@ public class MigrationAsyncProcessor {
                 job.setTargetPlaylistId(targetPlaylistId);
                 job.setTargetPlaylistUrl(buildTargetPlaylistUrl(spotifyDestination, targetPlaylistId));
                 jobRepository.saveAndFlush(job);
+                log.info(
+                    "migration.stage=retry-target-playlist-created jobId={} playlistId={} targetPlatform={}",
+                    jobId,
+                    targetPlaylistId,
+                    job.getTargetPlatform()
+                );
             }
 
             List<MigrationTrack> allTracks = new ArrayList<>(trackRepository.findByJobIdOrderByIdAsc(jobId));
@@ -340,18 +413,39 @@ public class MigrationAsyncProcessor {
             refreshJobCounters(job);
             job.setStatus(JobStatus.COMPLETED);
             jobRepository.saveAndFlush(job);
+            log.info(
+                "migration.stage=retry-completed jobId={} matchedTracks={} failedTracks={} totalTracks={}",
+                jobId,
+                job.getMatchedTracks(),
+                job.getFailedTracks(),
+                job.getTotalTracks()
+            );
         } catch (QuotaExceededException ex) {
             refreshJobCounters(job);
             job.setStatus(JobStatus.QUOTA_PAUSED);
             job.setPausedReason(QUOTA_PAUSED_REASON);
             job.setNextRetryTime(Instant.now().plusSeconds(24L * 60L * 60L));
             jobRepository.saveAndFlush(job);
-            log.warn("Migration job {} paused during retry because YouTube quota was exhausted", jobId);
+            log.warn(
+                "migration.stage=retry-paused-quota jobId={} matchedTracks={} failedTracks={} nextRetryTime={}",
+                jobId,
+                job.getMatchedTracks(),
+                job.getFailedTracks(),
+                job.getNextRetryTime()
+            );
         } catch (Exception ex) {
             refreshJobCounters(job);
             job.setStatus(JobStatus.FAILED);
             jobRepository.saveAndFlush(job);
-            log.error("Migration job {} failed during retry of failed tracks", jobId, ex);
+            log.error(
+                "migration.stage=retry-failed jobId={} matchedTracks={} failedTracks={} totalTracks={} reason={}",
+                jobId,
+                job.getMatchedTracks(),
+                job.getFailedTracks(),
+                job.getTotalTracks(),
+                summarizeError(ex),
+                ex
+            );
         }
     }
 

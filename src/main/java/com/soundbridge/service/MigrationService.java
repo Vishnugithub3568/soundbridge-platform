@@ -25,6 +25,8 @@ import java.util.UUID;
 import java.util.ArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Async;
@@ -34,6 +36,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @SuppressWarnings("null")
 public class MigrationService {
+
+    private static final Logger log = LoggerFactory.getLogger(MigrationService.class);
 
     private static final Pattern SPOTIFY_PLAYLIST_PATTERN = Pattern.compile("open\\.spotify\\.com/playlist/([A-Za-z0-9]+)");
     private static final int QUOTA_WARNING_THRESHOLD_UNITS = 8000;
@@ -218,6 +222,13 @@ public class MigrationService {
         job = jobRepository.saveAndFlush(job);
 
         UUID jobId = job.getId();
+        log.info(
+            "migration.service=queued jobId={} direction=SPOTIFY_TO_YOUTUBE strictMode={} userId={} sourcePlaylistUrl={}",
+            jobId,
+            strictMode,
+            request.getUserId(),
+            spotifyPlaylistUrl
+        );
         applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId, strictMode);
         return MigrationJobResponse.from(job);
     }
@@ -263,6 +274,13 @@ public class MigrationService {
         job = jobRepository.saveAndFlush(job);
 
         UUID jobId = job.getId();
+        log.info(
+            "migration.service=queued jobId={} direction=YOUTUBE_TO_SPOTIFY strictMode={} userId={} sourcePlaylistUrl={}",
+            jobId,
+            strictMode,
+            request.getUserId(),
+            youtubePlaylistUrl
+        );
         applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId, strictMode);
         return MigrationJobResponse.from(job);
     }
@@ -300,6 +318,12 @@ public class MigrationService {
         job = jobRepository.saveAndFlush(job);
 
         UUID jobId = job.getId();
+        log.info(
+            "migration.service=queued jobId={} direction=SPOTIFY_TO_YOUTUBE strictMode=false userId={} sourcePlaylistUrl={}",
+            jobId,
+            null,
+            normalizedUrl
+        );
         applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId, false);
         return MigrationJobResponse.from(job);
     }
@@ -325,6 +349,7 @@ public class MigrationService {
 
         job.setStatus(JobStatus.QUEUED);
         jobRepository.saveAndFlush(job);
+        log.info("migration.service=retry-queued jobId={} status={}", jobId, job.getStatus());
         applicationContext.getBean(MigrationService.class).retryFailedTracksAsync(jobId);
         return MigrationJobResponse.from(job);
     }
@@ -343,6 +368,7 @@ public class MigrationService {
         job.setPausedReason(null);
         job.setNextRetryTime(null);
         jobRepository.saveAndFlush(job);
+        log.info("migration.service=resume-queued jobId={} status={}", jobId, job.getStatus());
         applicationContext.getBean(MigrationService.class).processMigrationAsync(jobId, false);
         return MigrationJobResponse.from(job);
     }
@@ -363,11 +389,13 @@ public class MigrationService {
 
     @Async("migrationTaskExecutor")
     public void processMigrationAsync(UUID jobId, boolean strictMode) {
+        log.info("migration.service=dispatch-process jobId={} strictMode={}", jobId, strictMode);
         migrationAsyncProcessor.processMigration(jobId, strictMode);
     }
 
     @Async("migrationTaskExecutor")
     public void retryFailedTracksAsync(UUID jobId) {
+        log.info("migration.service=dispatch-retry jobId={}", jobId);
         migrationAsyncProcessor.retryFailedTracks(jobId);
     }
 
