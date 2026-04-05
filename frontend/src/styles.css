@@ -40,11 +40,91 @@
   }
 
   .glow-button {
-    @apply rounded-2xl border border-cyan-300/20 bg-gradient-to-r from-cyan-400 via-sky-500 to-indigo-500 px-6 py-3 font-bold text-white shadow-[0_0_24px_rgba(56,189,248,0.35)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_36px_rgba(56,189,248,0.55)];
+    @apply relative overflow-hidden rounded-full border px-7 py-3 font-semibold tracking-[0.02em] text-slate-900 transition duration-300;
+    border-color: rgba(219, 229, 255, 0.75);
+    background:
+      linear-gradient(180deg, rgba(248, 250, 252, 0.9) 0%, rgba(196, 201, 219, 0.86) 58%, rgba(168, 173, 195, 0.9) 100%);
+    box-shadow:
+      inset 0 2px 0 rgba(255, 255, 255, 0.75),
+      inset 0 -7px 14px rgba(71, 85, 105, 0.35),
+      0 14px 26px rgba(15, 23, 42, 0.4);
   }
 
   .glow-button-secondary {
-    @apply rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-slate-100 transition duration-300 hover:border-cyan-300/25 hover:bg-white/10 hover:shadow-[0_0_24px_rgba(56,189,248,0.18)];
+    @apply relative overflow-hidden rounded-full border px-6 py-2.5 font-semibold tracking-[0.02em] text-slate-100 transition duration-300;
+    border-color: rgba(214, 218, 240, 0.68);
+    background:
+      linear-gradient(180deg, rgba(33, 39, 57, 0.94) 0%, rgba(25, 30, 46, 0.95) 55%, rgba(12, 16, 30, 0.95) 100%);
+    box-shadow:
+      inset 0 2px 0 rgba(241, 245, 249, 0.26),
+      inset 0 -10px 18px rgba(2, 6, 23, 0.55),
+      0 12px 24px rgba(2, 6, 23, 0.45);
+  }
+
+  .glow-button::before,
+  .glow-button-secondary::before {
+    content: '';
+    position: absolute;
+    width: 180%;
+    height: 180%;
+    left: -40%;
+    top: -65%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.08) 34%, rgba(255, 255, 255, 0) 72%);
+    filter: blur(8px);
+    transform: translate3d(0, 0, 0);
+    animation: liquidOrbit 18s ease-in-out infinite;
+    pointer-events: none;
+    opacity: 0.45;
+  }
+
+  .glow-button::after,
+  .glow-button-secondary::after {
+    content: '';
+    position: absolute;
+    width: 160%;
+    height: 160%;
+    left: -30%;
+    bottom: -105%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.05) 36%, rgba(255, 255, 255, 0) 72%);
+    filter: blur(10px);
+    animation: liquidRise 20s ease-in-out infinite;
+    pointer-events: none;
+    opacity: 0.38;
+  }
+
+  .glow-button:hover,
+  .glow-button-secondary:hover {
+    transform: translateY(-1px);
+  }
+
+  .glow-button:hover {
+    box-shadow:
+      inset 0 2px 0 rgba(255, 255, 255, 0.82),
+      inset 0 -9px 16px rgba(51, 65, 85, 0.42),
+      0 16px 30px rgba(15, 23, 42, 0.45);
+  }
+
+  .glow-button-secondary:hover {
+    box-shadow:
+      inset 0 2px 0 rgba(241, 245, 249, 0.35),
+      inset 0 -11px 18px rgba(2, 6, 23, 0.62),
+      0 14px 28px rgba(2, 6, 23, 0.56);
+  }
+
+  .glow-button:active,
+  .glow-button-secondary:active {
+    transform: translateY(0);
+  }
+
+  .glow-button:disabled,
+  .glow-button-secondary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+    animation: none;
   }
 
   .gradient-heading {
@@ -109,6 +189,30 @@
   }
 }
 
+@keyframes liquidOrbit {
+  0% {
+    transform: translate3d(-4%, 2%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(5%, -3%, 0) scale(1.04);
+  }
+  100% {
+    transform: translate3d(-4%, 2%, 0) scale(1);
+  }
+}
+
+@keyframes liquidRise {
+  0%,
+  100% {
+    transform: translateY(2%);
+    opacity: 0.32;
+  }
+  50% {
+    transform: translateY(-3%);
+    opacity: 0.48;
+  }
+}
+
 .animate-glow-pulse {
   animation: glowPulse 1.8s ease-in-out infinite;
 }
@@ -161,6 +265,20 @@ html[data-theme='light'] .input-dark::placeholder {
 
 html[data-theme='light'] .gradient-heading {
   background-image: linear-gradient(90deg, #0284c7, #7c3aed, #db2777);
+}
+
+html[data-theme='light'] .glow-button {
+  color: #0f172a !important;
+  border-color: rgba(100, 116, 139, 0.6);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.75),
+    inset 0 -7px 14px rgba(148, 163, 184, 0.45),
+    0 12px 22px rgba(51, 65, 85, 0.25);
+}
+
+html[data-theme='light'] .glow-button-secondary {
+  border-color: rgba(71, 85, 105, 0.55);
+  color: #e2e8f0 !important;
 }
 
 html[data-theme='light'] .text-white,
