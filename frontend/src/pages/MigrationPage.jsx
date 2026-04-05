@@ -714,26 +714,54 @@ function MigrationPage() {
   }, [googleAccessToken, googleScope]);
 
   const userLabel = dashboardOverview?.displayName || googleUser?.email || 'SoundBridge Guest';
+  const authServiceStates = [
+    {
+      service: 'Spotify',
+      connected: Boolean(spotifyAccessToken),
+      status: spotifyAccessToken ? 'Connected' : 'Disconnected',
+      details: 'Private playlists and source access'
+    },
+    {
+      service: 'YouTube Music',
+      connected: Boolean(googleAccessToken),
+      status: googleAccessToken ? 'Connected' : 'Disconnected',
+      details: 'Destination playlist export'
+    }
+  ];
+
+  const connectedServiceCount = authServiceStates.filter((service) => service.connected).length;
+
+  const dashboardServiceMap = new Map(
+    (dashboardServices || []).map((service) => [String(service.service || ''), service])
+  );
   const overviewStats = dashboardOverview
     ? [
         { label: 'Saved jobs', value: dashboardOverview.totalJobs },
         { label: 'Completed', value: dashboardOverview.completedJobs },
         { label: 'Failed', value: dashboardOverview.failedJobs },
-        { label: 'Connected services', value: dashboardOverview.connectedServices }
+        { label: 'Connected services', value: connectedServiceCount }
       ]
     : [
         { label: 'Saved jobs', value: jobHistory.length },
         { label: 'Completed', value: jobHistory.filter((entry) => entry.status === 'COMPLETED').length },
         { label: 'Failed', value: jobHistory.filter((entry) => entry.status === 'FAILED').length },
-        { label: 'Connected services', value: 2 }
+        { label: 'Connected services', value: connectedServiceCount }
       ];
 
-  const activeServices = dashboardServices.length
-    ? dashboardServices
-    : [
-        { service: 'Spotify', connected: Boolean(spotifyAccessToken), status: spotifyAccessToken ? 'Connected' : 'Disconnected', details: 'Private playlists and source access' },
-        { service: 'YouTube Music', connected: Boolean(googleAccessToken), status: googleAccessToken ? 'Connected' : 'Disconnected', details: 'Destination playlist export' }
-      ];
+  const activeServices = [
+    ...authServiceStates.map((service) => {
+      const dashboardService = dashboardServiceMap.get(service.service);
+      return {
+        ...dashboardService,
+        ...service,
+        details: dashboardService?.details || service.details
+      };
+    }),
+    ...(dashboardServices || []).filter((service) => {
+      const name = String(service.service || '');
+      return name !== 'Spotify' && name !== 'YouTube Music';
+    })
+  ];
 
   const activeLibrary = dashboardLibrary.length
     ? dashboardLibrary
