@@ -2,6 +2,7 @@ package com.soundbridge.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -37,6 +38,8 @@ public class SpotifyClient {
 
     private static final Logger log = LoggerFactory.getLogger(SpotifyClient.class);
     private static final long MAX_BACKOFF_MS = 5000L;
+    private static final String DEFAULT_API_BASE_URL = "https://api.spotify.com/v1";
+    private static final String DEFAULT_ACCOUNTS_BASE_URL = "https://accounts.spotify.com";
     private static final Pattern INITIAL_STATE_PATTERN = Pattern.compile(
         "<script id=\\\"initialState\\\" type=\\\"text/plain\\\">(.*?)</script>",
         Pattern.DOTALL
@@ -69,11 +72,86 @@ public class SpotifyClient {
         this.objectMapper = new ObjectMapper();
         this.clientId = clientId;
         this.clientSecret = clientSecret;
-        this.apiBaseUrl = apiBaseUrl;
-        this.accountsBaseUrl = accountsBaseUrl;
+        this.apiBaseUrl = normalizeApiBaseUrl(apiBaseUrl);
+        this.accountsBaseUrl = normalizeAccountsBaseUrl(accountsBaseUrl);
         this.safeFallbackEnabled = safeFallbackEnabled;
         this.retryMaxAttempts = Math.max(1, retryMaxAttempts);
         this.retryInitialBackoffMs = Math.max(50L, retryInitialBackoffMs);
+    }
+
+    private String normalizeApiBaseUrl(String configured) {
+        String candidate = Objects.requireNonNullElse(configured, "").trim();
+        if (candidate.isBlank()) {
+            return DEFAULT_API_BASE_URL;
+        }
+
+        try {
+            URI uri = URI.create(candidate);
+            String scheme = Objects.requireNonNullElse(uri.getScheme(), "").toLowerCase();
+            String host = Objects.requireNonNullElse(uri.getHost(), "").toLowerCase();
+            if (!"https".equals(scheme) || !"api.spotify.com".equals(host)) {
+                log.warn(
+                    "Invalid SPOTIFY_API_BASE_URL='{}'; falling back to default {}",
+                    candidate,
+                    DEFAULT_API_BASE_URL
+                );
+                return DEFAULT_API_BASE_URL;
+            }
+
+            String path = Objects.requireNonNullElse(uri.getPath(), "").trim();
+            if (path.isBlank() || "/".equals(path)) {
+                return DEFAULT_API_BASE_URL;
+            }
+
+            String normalized = candidate.endsWith("/") ? candidate.substring(0, candidate.length() - 1) : candidate;
+            if (!path.startsWith("/v1")) {
+                log.warn(
+                    "SPOTIFY_API_BASE_URL path '{}' does not start with /v1; falling back to default {}",
+                    path,
+                    DEFAULT_API_BASE_URL
+                );
+                return DEFAULT_API_BASE_URL;
+            }
+
+            return normalized;
+        } catch (RuntimeException ex) {
+            log.warn(
+                "Could not parse SPOTIFY_API_BASE_URL='{}'; falling back to default {}",
+                candidate,
+                DEFAULT_API_BASE_URL
+            );
+            return DEFAULT_API_BASE_URL;
+        }
+    }
+
+    private String normalizeAccountsBaseUrl(String configured) {
+        String candidate = Objects.requireNonNullElse(configured, "").trim();
+        if (candidate.isBlank()) {
+            return DEFAULT_ACCOUNTS_BASE_URL;
+        }
+
+        try {
+            URI uri = URI.create(candidate);
+            String scheme = Objects.requireNonNullElse(uri.getScheme(), "").toLowerCase();
+            String host = Objects.requireNonNullElse(uri.getHost(), "").toLowerCase();
+            if (!"https".equals(scheme) || !"accounts.spotify.com".equals(host)) {
+                log.warn(
+                    "Invalid SPOTIFY_ACCOUNTS_BASE_URL='{}'; falling back to default {}",
+                    candidate,
+                    DEFAULT_ACCOUNTS_BASE_URL
+                );
+                return DEFAULT_ACCOUNTS_BASE_URL;
+            }
+
+            return candidate.endsWith("/") ? candidate.substring(0, candidate.length() - 1) : candidate;
+        } catch (RuntimeException ex) {
+            log.warn(
+                "Could not parse SPOTIFY_ACCOUNTS_BASE_URL='{}'; falling back to default {}",
+                candidate,
+                DEFAULT_ACCOUNTS_BASE_URL
+            );
+            return DEFAULT_ACCOUNTS_BASE_URL;
+        }
     }
 
     public List<SpotifyTrack> fetchPlaylistTracks(String playlistUrl) {
