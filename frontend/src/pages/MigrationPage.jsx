@@ -861,6 +861,7 @@ function MigrationPage() {
   ];
 
   const connectedServiceCount = authServiceStates.filter((service) => service.connected).length;
+  const allCoreServicesConnected = authServiceStates.every((service) => service.connected);
 
   const dashboardServiceMap = new Map(
     (dashboardServices || []).map((service) => [String(service.service || ''), service])
@@ -1859,14 +1860,19 @@ function MigrationPage() {
           <div className="mt-4 rounded-[24px] border border-white/10 bg-white/5 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Tools</p>
             <div className="mt-4 grid gap-2">
-              {['Home', 'Transfer', 'Playlists', 'Synchronize', 'Generate', 'Share'].map((item) => (
+              {['Home', 'Transfer', 'Playlists', 'Services', 'Generate', 'Share'].map((item) => (
                 <button
                   key={item}
                   type="button"
-                  onClick={() => setView(item.toLowerCase().includes('play') ? 'library' : item.toLowerCase() === 'home' ? 'home' : item.toLowerCase() === 'transfer' ? 'transfer' : item.toLowerCase() === 'synchronize' ? 'services' : item.toLowerCase() === 'share' ? 'help' : 'plans')}
-                  className="rounded-2xl px-3 py-2 text-left text-sm font-semibold text-slate-300 transition hover:bg-white/8 hover:text-white"
+                  onClick={() => setView(item.toLowerCase().includes('play') ? 'library' : item.toLowerCase() === 'home' ? 'home' : item.toLowerCase() === 'transfer' ? 'transfer' : item.toLowerCase() === 'services' ? 'services' : item.toLowerCase() === 'share' ? 'help' : 'plans')}
+                  className="flex items-center justify-between rounded-2xl px-3 py-2 text-left text-sm font-semibold text-slate-300 transition hover:bg-white/8 hover:text-white"
                 >
-                  {item}
+                  <span>{item}</span>
+                  {item === 'Services' && allCoreServicesConnected ? (
+                    <span className="rounded-full border border-emerald-300/40 bg-emerald-400/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
+                      Connected
+                    </span>
+                  ) : null}
                 </button>
               ))}
             </div>
