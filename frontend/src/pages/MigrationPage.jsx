@@ -458,7 +458,11 @@ function MigrationPage() {
   const [direction, setDirection] = useState('SPOTIFY_TO_YOUTUBE');
   const [strictMode, setStrictMode] = useState(false);
   const [theme, setTheme] = useState(() => readThemePreference());
-  const [view, setView] = useState('home');
+  const [view, setView] = useState(() => {
+    const cachedSpotify = readCachedSpotifyToken();
+    const cachedGoogle = readCachedGoogleToken();
+    return cachedSpotify.token || cachedGoogle.token ? 'services' : 'home';
+  });
   const [spotifyAccessToken, setSpotifyAccessToken] = useState(() => readCachedSpotifyToken().token);
   const [spotifyScope, setSpotifyScope] = useState(() => readCachedSpotifyToken().scope);
   const [googleAccessToken, setGoogleAccessToken] = useState(() => readCachedGoogleToken().token);
@@ -1091,6 +1095,7 @@ function MigrationPage() {
         setSpotifyAccessToken(tokenPayload.access_token);
         setSpotifyScope(String(tokenPayload.scope || '').trim());
         cacheSpotifyToken(tokenPayload.access_token, tokenPayload.expires_in, tokenPayload.scope);
+        setView('services');
         setError('');
       } catch (exchangeError) {
         setError(exchangeError.message || 'Failed to complete Spotify login.');
@@ -1157,6 +1162,7 @@ function MigrationPage() {
         setGoogleAccessToken(tokenPayload.access_token);
         setGoogleScope(String(tokenPayload.scope || '').trim());
         cacheGoogleToken(tokenPayload.access_token, tokenPayload.expires_in, tokenPayload.id_token, tokenPayload.scope);
+        setView('services');
 
         // Decode ID token to get user info
         if (tokenPayload.id_token) {
