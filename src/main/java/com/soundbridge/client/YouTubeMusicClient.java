@@ -1,6 +1,7 @@
 package com.soundbridge.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -9,6 +10,7 @@ import java.util.Objects;
 import java.util.Map;
 import java.util.Locale;
 import java.util.function.Supplier;
+import java.net.URI;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.client.RestTemplateBuilder;
@@ -35,16 +37,60 @@ public class YouTubeMusicClient {
 
     private static final Logger log = LoggerFactory.getLogger(YouTubeMusicClient.class);
     private static final int PAGE_SIZE = 50;
+    private static final String DEFAULT_API_BASE_URL = "https://www.googleapis.com/youtube/v3";
 
     private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
     private final String apiBaseUrl;
 
     public YouTubeMusicClient(
         RestTemplateBuilder restTemplateBuilder,
-        @Value("${youtube-music.api-base-url:https://music.youtube.com}") String apiBaseUrl
+        @Value("${youtube-music.api-base-url:${youtube.api-base-url:https://www.googleapis.com/youtube/v3}}") String apiBaseUrl
     ) {
         this.restTemplate = restTemplateBuilder.build();
-        this.apiBaseUrl = Objects.requireNonNullElse(apiBaseUrl, "https://music.youtube.com");
+        this.objectMapper = new ObjectMapper();
+        this.apiBaseUrl = normalizeApiBaseUrl(apiBaseUrl);
+    }
+
+    private String normalizeApiBaseUrl(String configured) {
+        String candidate = Objects.requireNonNullElse(configured, "").trim();
+        if (candidate.isBlank()) {
+            return DEFAULT_API_BASE_URL;
+        }
+
+        try {
+            URI uri = URI.create(candidate);
+            String scheme = Objects.requireNonNullElse(uri.getScheme(), "").toLowerCase(Locale.ROOT);
+            String host = Objects.requireNonNullElse(uri.getHost(), "").toLowerCase(Locale.ROOT);
+            String path = Objects.requireNonNullElse(uri.getPath(), "").trim();
+
+            if (!"https".equals(scheme)) {
+                log.warn(
+                    "Invalid YOUTUBE_MUSIC_API_BASE_URL='{}' (scheme must be https); falling back to {}",
+                    candidate,
+                    DEFAULT_API_BASE_URL
+                );
+                return DEFAULT_API_BASE_URL;
+            }
+
+            if (!"www.googleapis.com".equals(host) || !path.startsWith("/youtube/v3")) {
+                log.warn(
+                    "Invalid YOUTUBE_MUSIC_API_BASE_URL='{}'; expected https://www.googleapis.com/youtube/v3; falling back to {}",
+                    candidate,
+                    DEFAULT_API_BASE_URL
+                );
+                return DEFAULT_API_BASE_URL;
+            }
+
+            return candidate.endsWith("/") ? candidate.substring(0, candidate.length() - 1) : candidate;
+        } catch (RuntimeException ex) {
+            log.warn(
+                "Could not parse YOUTUBE_MUSIC_API_BASE_URL='{}'; falling back to {}",
+                candidate,
+                DEFAULT_API_BASE_URL
+            );
+            return DEFAULT_API_BASE_URL;
+        }
     }
 
     /**
@@ -135,10 +181,12 @@ public class YouTubeMusicClient {
 
         do {
             String url = buildPlaylistItemsUrl(playlistId, nextPageToken);
-            JsonNode body = executeWithRetry(
+            JsonNode body = exchangeForJson(
                 "youtube-music-playlist-items",
-                () -> restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(buildAuthHeaders(userAccessToken)), JsonNode.class)
-            ).getBody();
+                url,
+                HttpMethod.GET,
+                new HttpEntity<>(buildAuthHeaders(userAccessToken))
+            );
 
             if (body == null) {
                 break;
@@ -193,10 +241,12 @@ public class YouTubeMusicClient {
                 .build()
                 .toUriString();
 
-            JsonNode body = executeWithRetry(
+            JsonNode body = exchangeForJson(
                 "youtube-music-video-details",
-                () -> restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(buildAuthHeaders(userAccessToken)), JsonNode.class)
-            ).getBody();
+                url,
+                HttpMethod.GET,
+                new HttpEntity<>(buildAuthHeaders(userAccessToken))
+            );
 
             if (body == null) {
                 continue;
@@ -320,6 +370,35 @@ public class YouTubeMusicClient {
         return headers;
     }
 
+    private JsonNode exchangeForJson(String operationName, String url, HttpMethod method, HttpEntity<?> requestEntity) {
+        ResponseEntity<String> response = executeWithRetry(
+            operationName,
+            () -> restTemplate.exchange(url, method, requestEntity, String.class)
+        );
+
+        String payload = Objects.requireNonNullElse(response.getBody(), "").trim();
+        MediaType contentType = response.getHeaders().getContentType();
+        if (payload.isBlank()) {
+            return null;
+        }
+
+        try {
+            return objectMapper.readTree(payload);
+        } catch (Exception ex) {
+            String lower = payload.toLowerCase(Locale.ROOT);
+            if (lower.startsWith("<!doctype html") || lower.startsWith("<html") || lower.contains("<head") || lower.contains("<body")) {
+                String type = contentType == null ? "unknown" : contentType.toString();
+                throw new IllegalStateException(
+                    "YouTube source API returned HTML instead of JSON (" + type + ")."
+                        + " Set YOUTUBE_MUSIC_API_BASE_URL to https://www.googleapis.com/youtube/v3.",
+                    ex
+                );
+            }
+
+            throw new IllegalStateException("YouTube source API returned malformed JSON payload", ex);
+        }
+    }
+
     private <T> T executeWithRetry(String operationName, Supplier<T> apiCall) {
         try {
             return apiCall.get();
@@ -338,6 +417,15 @@ public class YouTubeMusicClient {
                         ex
                     );
                 }
+            }
+
+            String message = Objects.requireNonNullElse(ex.getMessage(), "").toLowerCase(Locale.ROOT);
+            if (message.contains("text/html") || message.contains("non-json") || message.contains("html")) {
+                throw new IllegalStateException(
+                    "YouTube source API returned HTML instead of JSON."
+                        + " Set YOUTUBE_MUSIC_API_BASE_URL to https://www.googleapis.com/youtube/v3.",
+                    ex
+                );
             }
 
             if (ex instanceof ResourceAccessException) {

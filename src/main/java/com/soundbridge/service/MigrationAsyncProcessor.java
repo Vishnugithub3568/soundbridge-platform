@@ -816,6 +816,9 @@ public class MigrationAsyncProcessor {
                 || normalized.contains("httpmessageconverter")
                 || normalized.contains("text/html")
         ) {
+            if (normalized.contains("youtube")) {
+                return "YouTube source API returned an unexpected web page instead of API data. Reconnect Google and verify backend YOUTUBE_MUSIC_API_BASE_URL is https://www.googleapis.com/youtube/v3.";
+            }
             return "Spotify returned an unexpected web page instead of API data. Reconnect Spotify and verify backend SPOTIFY_API_BASE_URL is https://api.spotify.com/v1.";
         }
 
