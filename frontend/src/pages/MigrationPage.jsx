@@ -904,6 +904,7 @@ function MigrationPage() {
       return name !== 'Spotify' && name !== 'YouTube Music';
     })
   ];
+  const servicesSidebarActive = connectedServiceCount > 0 || view === 'services';
 
   const activeLibrary = dashboardLibrary.length
     ? dashboardLibrary
@@ -1833,22 +1834,22 @@ function MigrationPage() {
 
       <div className="grid gap-6 xl:grid-cols-[280px_1fr]">
         <aside className="glass-card glass-card-hover hidden min-h-[calc(100vh-140px)] flex-col p-4 xl:flex">
-          <div className="rounded-[24px] border border-white/10 bg-white/5 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Connected services</p>
+          <div className={`rounded-[24px] border p-4 transition ${servicesSidebarActive ? 'border-cyan-300/30 bg-cyan-400/10 shadow-[0_0_28px_rgba(56,189,248,0.12)]' : 'border-white/10 bg-white/5'}`}>
+            <p className={`text-xs font-semibold uppercase tracking-[0.24em] ${servicesSidebarActive ? 'text-cyan-200' : 'text-slate-400'}`}>Connected services</p>
             <div className="mt-4 grid gap-3">
               {activeServices.map((service) => (
                 <button
                   key={service.service}
                   type="button"
                   onClick={() => setView('services')}
-                  className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-left transition hover:bg-white/10"
+                  className={`flex items-center gap-3 rounded-2xl border px-3 py-3 text-left transition hover:bg-white/10 ${service.connected ? 'border-emerald-300/30 bg-emerald-400/10 shadow-[0_0_22px_rgba(52,211,153,0.12)]' : 'border-white/10 bg-white/5'}`}
                 >
                   <span className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl ${service.connected ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-500/15 text-slate-300'}`}>
                     {service.service.slice(0, 1)}
                   </span>
                   <div>
                     <p className="text-sm font-semibold text-white">{service.service}</p>
-                    <p className="text-xs text-slate-400">{service.status}</p>
+                    <p className={`text-xs ${service.connected ? 'text-emerald-200' : 'text-slate-400'}`}>{service.status}</p>
                   </div>
                 </button>
               ))}
