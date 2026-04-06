@@ -1518,76 +1518,6 @@ function MigrationPage() {
             </section>
           ) : null}
 
-          <div className="grid gap-5 lg:grid-cols-2">
-            <div className="glass-card glass-card-hover p-5">
-              <div className="flex flex-col gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Spotify Login</p>
-                  <p className="mt-2 text-sm text-slate-300">
-                    OAuth login for private playlists using <span className="font-semibold text-white">playlist-read-private</span> and{' '}
-                    <span className="font-semibold text-white">playlist-read-collaborative</span>.
-                  </p>
-                  <p className="mt-3 text-sm text-slate-200">Status: {spotifyAccessToken ? 'Connected' : 'Not connected'}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={beginSpotifyLogin}
-                    disabled={spotifyAuthLoading}
-                    className="glow-button-secondary inline-flex min-w-[150px] flex-1 items-center justify-center"
-                  >
-                    {spotifyAuthLoading ? 'Connecting...' : spotifyAccessToken ? 'Reconnect Spotify' : 'Login with Spotify'}
-                  </button>
-                  {spotifyAccessToken ? (
-                    <button
-                      type="button"
-                      onClick={disconnectSpotify}
-                      className="glow-button-secondary inline-flex min-w-[120px] flex-1 items-center justify-center border-rose-400/20 text-rose-200 hover:border-rose-300/30 hover:bg-rose-500/10"
-                    >
-                      Disconnect
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
-            <div className="glass-card glass-card-hover p-5">
-              <div className="flex flex-col gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Google Login</p>
-                  <p className="mt-2 text-sm text-slate-300">
-                    OAuth login with YouTube write access to create playlists and add matched tracks automatically.
-                  </p>
-                  <p className="mt-3 text-sm text-slate-200">
-                    Status: {googleAccessToken ? `Connected as ${googleUser?.email || 'User'}` : 'Not connected'}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={beginGoogleLogin}
-                    disabled={googleAuthLoading}
-                    className="glow-button-secondary inline-flex min-w-[150px] flex-1 items-center justify-center"
-                  >
-                    {googleAuthLoading ? 'Connecting...' : googleAccessToken ? 'Reconnect Google' : 'Login with Google'}
-                  </button>
-                  {googleAccessToken ? (
-                    <button
-                      type="button"
-                      onClick={disconnectGoogle}
-                      className="glow-button-secondary inline-flex min-w-[120px] flex-1 items-center justify-center border-rose-400/20 text-rose-200 hover:border-rose-300/30 hover:bg-rose-500/10"
-                    >
-                      Disconnect
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              <div className="mt-4 rounded-2xl border border-amber-400/15 bg-amber-400/10 px-4 py-3 text-xs leading-6 text-amber-100">
-                If Google shows <span className="font-semibold">access_denied</span>, add your account as a Test user in Google Cloud Console or publish the app.
-              </div>
-            </div>
-          </div>
-
           <div className="mt-1 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-col gap-2 text-sm text-slate-300">
               <div className="flex items-center gap-3">
@@ -1682,6 +1612,78 @@ function MigrationPage() {
     </div>
   );
 
+  const serviceLoginSection = (
+    <div className="grid gap-5 lg:grid-cols-2">
+      <div className="glass-card glass-card-hover p-5">
+        <div className="flex flex-col gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Spotify Login</p>
+            <p className="mt-2 text-sm text-slate-300">
+              OAuth login for private playlists using <span className="font-semibold text-white">playlist-read-private</span>,{' '}
+              <span className="font-semibold text-white">playlist-read-collaborative</span>, and playlist write access.
+            </p>
+            <p className="mt-3 text-sm text-slate-200">Status: {spotifyAccessToken ? 'Connected' : 'Not connected'}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={beginSpotifyLogin}
+              disabled={spotifyAuthLoading}
+              className="glow-button-secondary inline-flex min-w-[150px] flex-1 items-center justify-center"
+            >
+              {spotifyAuthLoading ? 'Connecting...' : spotifyAccessToken ? 'Reconnect Spotify' : 'Login with Spotify'}
+            </button>
+            {spotifyAccessToken ? (
+              <button
+                type="button"
+                onClick={disconnectSpotify}
+                className="glow-button-secondary inline-flex min-w-[120px] flex-1 items-center justify-center border-rose-400/20 text-rose-200 hover:border-rose-300/30 hover:bg-rose-500/10"
+              >
+                Disconnect
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="glass-card glass-card-hover p-5">
+        <div className="flex flex-col gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Google Login</p>
+            <p className="mt-2 text-sm text-slate-300">
+              OAuth login with YouTube write access to create playlists and add matched tracks automatically.
+            </p>
+            <p className="mt-3 text-sm text-slate-200">
+              Status: {googleAccessToken ? `Connected as ${googleUser?.email || 'User'}` : 'Not connected'}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={beginGoogleLogin}
+              disabled={googleAuthLoading}
+              className="glow-button-secondary inline-flex min-w-[150px] flex-1 items-center justify-center"
+            >
+              {googleAuthLoading ? 'Connecting...' : googleAccessToken ? 'Reconnect Google' : 'Login with Google'}
+            </button>
+            {googleAccessToken ? (
+              <button
+                type="button"
+                onClick={disconnectGoogle}
+                className="glow-button-secondary inline-flex min-w-[120px] flex-1 items-center justify-center border-rose-400/20 text-rose-200 hover:border-rose-300/30 hover:bg-rose-500/10"
+              >
+                Disconnect
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <div className="mt-4 rounded-2xl border border-amber-400/15 bg-amber-400/10 px-4 py-3 text-xs leading-6 text-amber-100">
+          If Google shows <span className="font-semibold">access_denied</span>, add your account as a Test user in Google Cloud Console or publish the app.
+        </div>
+      </div>
+    </div>
+  );
+
   const plansSection = (
     <motion.section
       className="glass-card glass-card-hover p-5 md:p-6"
@@ -1743,7 +1745,7 @@ function MigrationPage() {
 
   const servicesSection = (
     <motion.section
-      className="glass-card glass-card-hover p-5 md:p-6"
+      className="grid gap-6"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
@@ -1770,6 +1772,7 @@ function MigrationPage() {
           </article>
         ))}
       </div>
+      {serviceLoginSection}
     </motion.section>
   );
 
@@ -1831,7 +1834,7 @@ function MigrationPage() {
                 <button
                   key={service.service}
                   type="button"
-                  onClick={() => setView(service.service === 'Spotify' ? 'transfer' : 'services')}
+                  onClick={() => setView('services')}
                   className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-left transition hover:bg-white/10"
                 >
                   <span className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl ${service.connected ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-500/15 text-slate-300'}`}>
