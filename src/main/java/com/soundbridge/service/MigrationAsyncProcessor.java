@@ -807,6 +807,10 @@ public class MigrationAsyncProcessor {
             return "OAuth permission missing. Reconnect account and approve required scopes.";
         }
 
+        if (normalized.contains("active premium subscription required for the owner of the app")) {
+            return "Spotify rejected playlist creation because the Spotify app owner account does not meet required subscription status. Use an app owned by an eligible account or update the owner subscription, then reconnect Spotify.";
+        }
+
         if (normalized.contains("access token") || normalized.contains("unauthorized") || normalized.contains("401")) {
             return "Access token expired or invalid. Reconnect account and retry.";
         }

@@ -20,7 +20,12 @@ import {
 } from '../services/apiService';
 
 const TERMINAL_STATUSES = new Set(['COMPLETED', 'FAILED']);
-const SPOTIFY_SCOPES = ['playlist-read-private', 'playlist-read-collaborative'];
+const SPOTIFY_SCOPES = [
+  'playlist-read-private',
+  'playlist-read-collaborative',
+  'playlist-modify-private',
+  'playlist-modify-public'
+];
 const SPOTIFY_PKCE_VERIFIER_KEY = 'spotify_pkce_verifier';
 const SPOTIFY_PKCE_STATE_KEY = 'spotify_pkce_state';
 const SPOTIFY_TOKEN_CACHE_KEY = 'spotify_oauth_token';
@@ -38,6 +43,8 @@ const GOOGLE_TOKEN_CACHE_KEY = 'google_oauth_token';
 const GOOGLE_ID_TOKEN_CACHE_KEY = 'google_oauth_id_token';
 const GOOGLE_REQUIRED_SCOPE_MESSAGE =
   'Google token is missing YouTube permission. Reconnect Google and approve YouTube access.';
+const SPOTIFY_REQUIRED_WRITE_SCOPE_MESSAGE =
+  'Spotify token is missing playlist write permission. Reconnect Spotify and approve playlist-modify scopes.';
 const THEME_CACHE_KEY = 'soundbridge_theme';
 const JOB_HISTORY_CACHE_KEY = 'soundbridge_job_history';
 const APP_USER_ID_CACHE_KEY = 'soundbridge_app_user_id';
@@ -294,9 +301,9 @@ async function sha256(input) {
   return new Uint8Array(buffer);
 }
 
-function cacheSpotifyToken(token, expiresInSeconds) {
+function cacheSpotifyToken(token, expiresInSeconds, scope) {
   const expiresAt = Date.now() + Math.max(0, Number(expiresInSeconds || 0)) * 1000;
-  const payload = JSON.stringify({ token, expiresAt });
+  const payload = JSON.stringify({ token, expiresAt, scope: String(scope || '').trim() });
   window.localStorage.setItem(SPOTIFY_TOKEN_CACHE_KEY, payload);
 }
 
@@ -304,19 +311,22 @@ function readCachedSpotifyToken() {
   try {
     const raw = window.localStorage.getItem(SPOTIFY_TOKEN_CACHE_KEY);
     if (!raw) {
-      return '';
+      return { token: '', scope: '' };
     }
 
     const parsed = JSON.parse(raw);
     if (!parsed?.token || !parsed?.expiresAt || parsed.expiresAt <= Date.now() + 60000) {
       window.localStorage.removeItem(SPOTIFY_TOKEN_CACHE_KEY);
-      return '';
+      return { token: '', scope: '' };
     }
 
-    return parsed.token;
+    return {
+      token: parsed.token,
+      scope: String(parsed.scope || '').trim()
+    };
   } catch {
     window.localStorage.removeItem(SPOTIFY_TOKEN_CACHE_KEY);
-    return '';
+    return { token: '', scope: '' };
   }
 }
 
@@ -392,6 +402,16 @@ function hasRequiredGoogleScope(scopeString) {
   return scopes.has(REQUIRED_YOUTUBE_SCOPE) || scopes.has('https://www.googleapis.com/auth/youtube');
 }
 
+function hasRequiredSpotifyWriteScopes(scopeString) {
+  const normalized = String(scopeString || '').trim();
+  if (!normalized) {
+    return false;
+  }
+
+  const scopes = new Set(normalized.split(/\s+/).filter(Boolean));
+  return scopes.has('playlist-modify-private') || scopes.has('playlist-modify-public');
+}
+
 function describeGoogleAuthError(authError) {
   const normalized = String(authError || '').trim();
   if (normalized === 'access_denied') {
@@ -439,7 +459,8 @@ function MigrationPage() {
   const [strictMode, setStrictMode] = useState(false);
   const [theme, setTheme] = useState(() => readThemePreference());
   const [view, setView] = useState('home');
-  const [spotifyAccessToken, setSpotifyAccessToken] = useState(() => readCachedSpotifyToken());
+  const [spotifyAccessToken, setSpotifyAccessToken] = useState(() => readCachedSpotifyToken().token);
+  const [spotifyScope, setSpotifyScope] = useState(() => readCachedSpotifyToken().scope);
   const [googleAccessToken, setGoogleAccessToken] = useState(() => readCachedGoogleToken().token);
   const [googleScope, setGoogleScope] = useState(() => readCachedGoogleToken().scope);
   const [googleUser, setGoogleUser] = useState(null);
@@ -715,6 +736,14 @@ function MigrationPage() {
       return;
     }
 
+    if (isYouTubeToSpotify && !hasRequiredSpotifyWriteScopes(spotifyScope)) {
+      setSpotifyAccessToken('');
+      setSpotifyScope('');
+      window.localStorage.removeItem(SPOTIFY_TOKEN_CACHE_KEY);
+      setError(SPOTIFY_REQUIRED_WRITE_SCOPE_MESSAGE);
+      return;
+    }
+
     if (isYouTubeToSpotify && (!googleAccessToken || !googleAccessToken.trim())) {
       setError('Google login is required to access YouTube Music playlists.');
       return;
@@ -942,6 +971,7 @@ function MigrationPage() {
 
   const disconnectSpotify = () => {
     setSpotifyAccessToken('');
+    setSpotifyScope('');
     window.localStorage.removeItem(SPOTIFY_TOKEN_CACHE_KEY);
     window.localStorage.removeItem(SPOTIFY_PKCE_VERIFIER_KEY);
     window.localStorage.removeItem(SPOTIFY_PKCE_STATE_KEY);
@@ -1059,7 +1089,8 @@ function MigrationPage() {
         }
 
         setSpotifyAccessToken(tokenPayload.access_token);
-        cacheSpotifyToken(tokenPayload.access_token, tokenPayload.expires_in);
+        setSpotifyScope(String(tokenPayload.scope || '').trim());
+        cacheSpotifyToken(tokenPayload.access_token, tokenPayload.expires_in, tokenPayload.scope);
         setError('');
       } catch (exchangeError) {
         setError(exchangeError.message || 'Failed to complete Spotify login.');
