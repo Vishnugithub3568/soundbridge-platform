@@ -314,7 +314,7 @@ public class SpotifyClient {
     }
 
     public String createPlaylist(String spotifyUserAccessToken, String title, String description) {
-        String token = Objects.requireNonNullElse(spotifyUserAccessToken, "").trim();
+        String token = normalizeBearerToken(spotifyUserAccessToken);
         if (token.isBlank()) {
             throw new IllegalArgumentException("Spotify access token is required to create Spotify playlist");
         }
@@ -337,6 +337,7 @@ public class SpotifyClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
 
         JsonNode payload = exchangeForJson(
             "spotify-create-playlist",
@@ -353,7 +354,7 @@ public class SpotifyClient {
     }
 
     public void addTrackToPlaylist(String spotifyUserAccessToken, String playlistId, String trackUri) {
-        String token = Objects.requireNonNullElse(spotifyUserAccessToken, "").trim();
+        String token = normalizeBearerToken(spotifyUserAccessToken);
         if (token.isBlank()) {
             throw new IllegalArgumentException("Spotify access token is required to add items to Spotify playlist");
         }
@@ -375,6 +376,7 @@ public class SpotifyClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
 
         exchangeForJson(
             "spotify-add-playlist-track",
@@ -528,8 +530,9 @@ public class SpotifyClient {
 
     private JsonNode getAuthorizedJson(String url, String spotifyUserAccessToken) {
         HttpHeaders headers = new HttpHeaders();
-        String userToken = spotifyUserAccessToken == null ? "" : spotifyUserAccessToken.trim();
+        String userToken = normalizeBearerToken(spotifyUserAccessToken);
         headers.setBearerAuth(userToken.isEmpty() ? getAccessToken() : userToken);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
         HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
         return exchangeForJson("spotify-playlist-tracks", url, HttpMethod.GET, requestEntity);
     }
@@ -588,20 +591,55 @@ public class SpotifyClient {
                 throw new IllegalStateException("Spotify API returned empty response body");
             }
 
-            if (!isJsonPayload(contentType, payload)) {
-                String type = contentType == null ? "unknown" : contentType.toString();
-                throw new IllegalStateException(
-                    "Spotify API returned non-JSON content (" + type + ")."
-                        + " Verify SPOTIFY_API_BASE_URL and reconnect Spotify."
-                );
-            }
-
             try {
                 return objectMapper.readTree(payload);
             } catch (Exception ex) {
+                if (looksLikeHtml(payload)) {
+                    String type = contentType == null ? "unknown" : contentType.toString();
+                    throw new IllegalStateException(
+                        "Spotify API returned HTML content (" + type + ") for " + method + " " + url + "."
+                            + " Verify SPOTIFY_API_BASE_URL and reconnect Spotify."
+                    );
+                }
+
+                if (!isJsonPayload(contentType, payload)) {
+                    String type = contentType == null ? "unknown" : contentType.toString();
+                    throw new IllegalStateException(
+                        "Spotify API returned non-JSON content (" + type + ") for " + method + " " + url + "."
+                            + " Verify SPOTIFY_API_BASE_URL and reconnect Spotify."
+                    );
+                }
+
                 throw new IllegalStateException("Spotify API returned malformed JSON payload", ex);
             }
         });
+    }
+
+    private String normalizeBearerToken(String token) {
+        String normalized = Objects.requireNonNullElse(token, "").trim();
+        if (normalized.isEmpty()) {
+            return "";
+        }
+
+        if (normalized.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            normalized = normalized.substring(7).trim();
+        }
+
+        if (normalized.length() >= 2
+            && ((normalized.startsWith("\"") && normalized.endsWith("\""))
+                || (normalized.startsWith("'") && normalized.endsWith("'")))) {
+            normalized = normalized.substring(1, normalized.length() - 1).trim();
+        }
+
+        return normalized;
+    }
+
+    private boolean looksLikeHtml(String payload) {
+        String normalized = payload.toLowerCase();
+        return normalized.startsWith("<!doctype html")
+            || normalized.startsWith("<html")
+            || normalized.contains("<head")
+            || normalized.contains("<body");
     }
 
     private boolean isJsonPayload(MediaType contentType, String payload) {
