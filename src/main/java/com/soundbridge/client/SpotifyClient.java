@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -44,6 +45,13 @@ public class SpotifyClient {
         "<script id=\\\"initialState\\\" type=\\\"text/plain\\\">(.*?)</script>",
         Pattern.DOTALL
     );
+    private static final Pattern BRACKETED_SEGMENTS_PATTERN = Pattern.compile("\\([^)]*\\)|\\[[^]]*]|\\{[^}]*}");
+    private static final Pattern FEATURING_PATTERN = Pattern.compile("\\b(feat|ft|featuring|with)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern NOISE_TERMS_PATTERN = Pattern.compile(
+        "\\b(official|video|audio|lyrics?|lyric|version|remaster(ed)?|mono|stereo|topic|hq|hd|from)\\b",
+        Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern TOPIC_SUFFIX_PATTERN = Pattern.compile("\\s*[-–—]\\s*topic$", Pattern.CASE_INSENSITIVE);
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
@@ -278,39 +286,114 @@ public class SpotifyClient {
             return List.of();
         }
 
-        String query = "track:" + normalizedTrackName + " artist:" + normalizedArtistName;
-        String url = UriComponentsBuilder
-            .fromUriString(apiBaseUrl + "/search")
-            .queryParam("q", query)
-            .queryParam("type", "track")
-            .queryParam("limit", 5)
-            .build()
-            .toUriString();
-
-        JsonNode body = getAuthorizedJson(url, spotifyUserAccessToken);
-        JsonNode items = body.path("tracks").path("items");
-        if (!items.isArray() || items.isEmpty()) {
+        List<String> queries = buildSearchQueries(normalizedTrackName, normalizedArtistName);
+        if (queries.isEmpty()) {
             return List.of();
         }
 
         List<SpotifySearchCandidate> candidates = new ArrayList<>();
-        for (JsonNode item : items) {
-            String id = item.path("id").asText("");
-            String name = item.path("name").asText("");
-            String uri = item.path("uri").asText("");
-            String externalUrl = item.path("external_urls").path("spotify").asText("");
-            String album = item.path("album").path("name").asText(null);
-            String artist = extractPrimaryArtist(item.path("artists"));
-            String thumbnailUrl = extractAlbumThumbnail(item.path("album").path("images"));
+        Set<String> seenIds = new LinkedHashSet<>();
 
-            if (id.isBlank() || name.isBlank() || uri.isBlank()) {
+        for (String query : queries) {
+            String url = UriComponentsBuilder
+                .fromUriString(apiBaseUrl + "/search")
+                .queryParam("q", query)
+                .queryParam("type", "track")
+                .queryParam("limit", 7)
+                .build()
+                .toUriString();
+
+            JsonNode body = getAuthorizedJson(url, spotifyUserAccessToken);
+            JsonNode items = body.path("tracks").path("items");
+            if (!items.isArray() || items.isEmpty()) {
                 continue;
             }
 
-            candidates.add(new SpotifySearchCandidate(id, uri, name, artist, album, externalUrl, thumbnailUrl));
+            for (JsonNode item : items) {
+                String id = item.path("id").asText("");
+                String name = item.path("name").asText("");
+                String uri = item.path("uri").asText("");
+                String externalUrl = item.path("external_urls").path("spotify").asText("");
+                String album = item.path("album").path("name").asText(null);
+                String artist = extractPrimaryArtist(item.path("artists"));
+                String thumbnailUrl = extractAlbumThumbnail(item.path("album").path("images"));
+
+                if (id.isBlank() || name.isBlank() || uri.isBlank() || !seenIds.add(id)) {
+                    continue;
+                }
+
+                candidates.add(new SpotifySearchCandidate(id, uri, name, artist, album, externalUrl, thumbnailUrl));
+            }
+
+            if (!candidates.isEmpty()) {
+                break;
+            }
         }
 
         return candidates;
+    }
+
+    private List<String> buildSearchQueries(String trackName, String artistName) {
+        String cleanedTrack = normalizeForSearch(trackName);
+        String cleanedArtist = normalizeArtistForSearch(artistName);
+        String primaryArtist = extractPrimaryArtistToken(cleanedArtist);
+
+        Set<String> queries = new LinkedHashSet<>();
+        queries.add("track:" + trackName + " artist:" + artistName);
+
+        if (!cleanedTrack.isBlank() && !cleanedArtist.isBlank()) {
+            queries.add("track:" + cleanedTrack + " artist:" + cleanedArtist);
+        }
+
+        if (!cleanedTrack.isBlank() && !primaryArtist.isBlank()) {
+            queries.add("track:" + cleanedTrack + " artist:" + primaryArtist);
+            queries.add(cleanedTrack + " " + primaryArtist);
+        }
+
+        if (!cleanedTrack.isBlank()) {
+            queries.add(cleanedTrack);
+        }
+
+        return queries.stream().filter(query -> !query.isBlank()).toList();
+    }
+
+    private String normalizeArtistForSearch(String artistName) {
+        String cleaned = normalizeForSearch(artistName);
+        if (cleaned.isBlank()) {
+            return "";
+        }
+
+        cleaned = TOPIC_SUFFIX_PATTERN.matcher(cleaned).replaceAll("").trim();
+        return cleaned;
+    }
+
+    private String extractPrimaryArtistToken(String artistName) {
+        String normalized = Objects.requireNonNullElse(artistName, "").trim();
+        if (normalized.isBlank()) {
+            return "";
+        }
+
+        String[] splits = normalized.split(",|&|/|\\bx\\b|\\band\\b");
+        String primary = splits.length == 0 ? normalized : splits[0].trim();
+        return primary.isBlank() ? normalized : primary;
+    }
+
+    private String normalizeForSearch(String value) {
+        String normalized = Objects.requireNonNullElse(value, "").trim();
+        if (normalized.isBlank()) {
+            return "";
+        }
+
+        normalized = BRACKETED_SEGMENTS_PATTERN.matcher(normalized).replaceAll(" ");
+        normalized = FEATURING_PATTERN.matcher(normalized).replaceAll(" ");
+        normalized = NOISE_TERMS_PATTERN.matcher(normalized).replaceAll(" ");
+        normalized = normalized
+            .toLowerCase(Locale.ROOT)
+            .replaceAll("[^a-z0-9\\s]", " ")
+            .replaceAll("\\s+", " ")
+            .trim();
+
+        return normalized;
     }
 
     public String createPlaylist(String spotifyUserAccessToken, String title, String description) {
