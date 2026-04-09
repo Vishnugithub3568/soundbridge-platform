@@ -1212,7 +1212,7 @@ function MigrationPage() {
               <span className="gradient-heading">{userLabel}</span>
             </h1>
             <p className="mt-3 text-sm text-slate-300 md:text-base">
-              Manage playlists, run transfers, and review the latest migrations from one Soundiiz-style workspace.
+              Manage playlists, run transfers, and review the latest migrations from one focused workspace.
             </p>
           </div>
           <div className="flex flex-col gap-2 rounded-[24px] border border-white/10 bg-white/5 px-4 py-4 text-sm text-slate-300 md:min-w-[220px]">
@@ -1334,7 +1334,7 @@ function MigrationPage() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Playlists</p>
           <h2 className="mt-2 text-2xl font-black text-white">Playlist library</h2>
-          <p className="mt-1 text-sm text-slate-400">Recent migrations displayed as Soundiiz-style library cards.</p>
+          <p className="mt-1 text-sm text-slate-400">Recent migrations displayed as clean library cards.</p>
         </div>
         <button type="button" onClick={() => setView('home')} className="glow-button-secondary self-start">
           Back to home
@@ -1703,7 +1703,7 @@ function MigrationPage() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Plans</p>
           <h2 className="mt-2 text-2xl font-black text-white">Simple pricing</h2>
-          <p className="mt-1 text-sm text-slate-400">Temporary plan page for the Soundiiz-style shell.</p>
+          <p className="mt-1 text-sm text-slate-400">Temporary plan page for the SoundBridge shell.</p>
         </div>
         <button type="button" onClick={() => setView('transfer')} className="glow-button-secondary">
           Start transfer
