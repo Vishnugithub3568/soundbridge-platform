@@ -315,7 +315,7 @@ public class YouTubeMusicClient {
                 String left = normalizedTitle.substring(0, splitIndex).trim();
                 String right = normalizedTitle.substring(splitIndex + separator.length()).trim();
                 if (!left.isBlank() && !right.isBlank()) {
-                    return right;
+                    return left;
                 }
             }
         }
@@ -327,6 +327,19 @@ public class YouTubeMusicClient {
         String normalized = Objects.requireNonNullElse(title, "").trim();
         if (normalized.isBlank()) {
             return normalized;
+        }
+
+        String[] separators = {" - ", " – ", " — ", " | "};
+        for (String separator : separators) {
+            int splitIndex = normalized.indexOf(separator);
+            if (splitIndex > 0) {
+                String left = normalized.substring(0, splitIndex).trim();
+                String right = normalized.substring(splitIndex + separator.length()).trim();
+                if (!left.isBlank() && !right.isBlank()) {
+                    normalized = right;
+                    break;
+                }
+            }
         }
 
         String[] suffixes = {

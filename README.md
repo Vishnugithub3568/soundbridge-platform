@@ -158,3 +158,14 @@ Optional full migration run (starts jobs and polls until terminal status):
   -GoogleAccessToken "<google_access_token_with_youtube_force_ssl_scope>" `
   -RunMigration
 ```
+
+After quota reset, resume paused jobs and optionally retry failed tracks:
+
+```powershell
+./scripts/phase7-e2e-validate.ps1 `
+  -BaseUrl "https://your-backend-domain" `
+  -SpotifyAccessToken "<spotify_access_token>" `
+  -GoogleAccessToken "<google_access_token_with_youtube_force_ssl_scope>" `
+  -ResumeJobIds "<job_id_1>","<job_id_2>" `
+  -RetryFailedAfterResume
+```

@@ -8,13 +8,16 @@ param(
     [string]$BaseUrl = "http://localhost:9000",
     [string]$SpotifySourcePlaylistUrl = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
     [string]$YouTubeSourcePlaylistUrl = "https://music.youtube.com/playlist?list=PLFgquLnL59alW3xmYiWRaoz0oM3H17Lth",
-    [string]$UserId = "11111111-1111-1111-1111-111111111111",
+    [string]$UserId = "",
     [switch]$RunMigration,
-    [int]$PollSeconds = 120
+    [int]$PollSeconds = 120,
+    [string[]]$ResumeJobIds = @(),
+    [switch]$RetryFailedAfterResume
 )
 
 $ErrorActionPreference = "Stop"
 $failed = $false
+$quotaSignals = @()
 
 $terminalStatuses = @("COMPLETED", "FAILED", "PARTIAL_SUCCESS", "QUOTA_PAUSED")
 
@@ -63,7 +66,10 @@ function Start-MigrationAndPoll {
         direction = $Direction
         spotifyAccessToken = $SpotifyAccessTokenValue
         googleAccessToken = $GoogleAccessTokenValue
-        userId = $UserIdValue
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($UserIdValue)) {
+        $startBody.userId = $UserIdValue
     }
 
     $started = Invoke-JsonPost -Url "$BaseUrlValue/migrate" -Body $startBody -TimeoutSec 90
@@ -93,8 +99,101 @@ function Start-MigrationAndPoll {
     throw "Timed out waiting for job $jobId to reach terminal status in $MaxPollSeconds seconds."
 }
 
+function Poll-JobUntilTerminal {
+    param(
+        [string]$JobId,
+        [string]$BaseUrlValue,
+        [int]$MaxPollSeconds
+    )
+
+    $deadline = (Get-Date).AddSeconds($MaxPollSeconds)
+    do {
+        Start-Sleep -Seconds 2
+        $job = Invoke-RestMethod -Method GET -Uri "$BaseUrlValue/migrate/$JobId" -TimeoutSec 30
+        $status = [string]$job.status
+        Write-Host "Status: $status"
+
+        if ($terminalStatuses -contains $status) {
+            $report = Invoke-RestMethod -Method GET -Uri "$BaseUrlValue/migrate/$JobId/report" -TimeoutSec 30
+            return @{
+                job = $job
+                report = $report
+            }
+        }
+    } while ((Get-Date) -lt $deadline)
+
+    throw "Timed out waiting for job $JobId to reach terminal status in $MaxPollSeconds seconds."
+}
+
+function Resume-JobAndPoll {
+    param(
+        [string]$JobId,
+        [string]$BaseUrlValue,
+        [int]$MaxPollSeconds,
+        [bool]$RetryFailed
+    )
+
+    if ([string]::IsNullOrWhiteSpace($JobId)) {
+        throw "Resume job id is required."
+    }
+
+    Write-Host "Resuming job: $JobId"
+    $resume = Invoke-RestMethod -Method POST -Uri "$BaseUrlValue/migrate/$JobId/resume" -TimeoutSec 60
+    if (-not $resume.id) {
+        throw "Resume response missing job id. Response: $($resume | ConvertTo-Json -Compress)"
+    }
+
+    $result = Poll-JobUntilTerminal -JobId $JobId -BaseUrlValue $BaseUrlValue -MaxPollSeconds $MaxPollSeconds
+
+    if ($RetryFailed -and (@("FAILED", "PARTIAL_SUCCESS") -contains [string]$result.job.status)) {
+        Write-Host "Retrying failed tracks for job: $JobId"
+        Invoke-RestMethod -Method POST -Uri "$BaseUrlValue/migrate/$JobId/retry-failed" -TimeoutSec 60 | Out-Null
+        $result = Poll-JobUntilTerminal -JobId $JobId -BaseUrlValue $BaseUrlValue -MaxPollSeconds $MaxPollSeconds
+    }
+
+    return $result
+}
+
+function Show-QuotaGuidance {
+    param(
+        [string]$Direction,
+        [object]$Job,
+        [object]$Report,
+        [string]$BaseUrlValue
+    )
+
+    if ($null -eq $Job -or $null -eq $Report) {
+        return
+    }
+
+    $status = [string]$Job.status
+    $dominantIssue = [string]$Report.dominantIssueCategory
+    $isQuota = $status -eq "QUOTA_PAUSED" -or $dominantIssue -eq "QUOTA"
+
+    if (-not $isQuota) {
+        return
+    }
+
+    $signal = "[$Direction] status=$status issue=$dominantIssue"
+    $script:quotaSignals += $signal
+
+    Write-Host ""
+    Write-Host "Quota diagnostic: $signal" -ForegroundColor Yellow
+    if ($Job.nextRetryTime) {
+        Write-Host "Suggested resume time (from job): $($Job.nextRetryTime)" -ForegroundColor Yellow
+    }
+    Write-Host "Retry guidance:" -ForegroundColor Yellow
+    Write-Host "1) Wait for provider quota reset window." -ForegroundColor Yellow
+    Write-Host "2) Resume paused jobs with: POST $BaseUrlValue/migrate/<jobId>/resume" -ForegroundColor Yellow
+    Write-Host "3) Retry failed tracks with: POST $BaseUrlValue/migrate/<jobId>/retry-failed" -ForegroundColor Yellow
+    Write-Host "4) Re-run preflight before large transfers to estimate quota impact." -ForegroundColor Yellow
+}
+
 Write-Host "Running Phase 7 authenticated validation against: $BaseUrl"
 Write-Host "Run migration mode: $RunMigration"
+if ($ResumeJobIds.Count -gt 0) {
+    Write-Host "Resume mode job ids: $($ResumeJobIds -join ', ')"
+}
 
 Invoke-Step -Name "GET /health" -Action {
     $resp = Invoke-RestMethod -Method GET -Uri "$BaseUrl/health" -TimeoutSec 20
@@ -146,6 +245,7 @@ if ($RunMigration) {
 
         Write-Host "Final status: $($result.job.status)"
         Write-Host ($result.report | ConvertTo-Json -Depth 10)
+        Show-QuotaGuidance -Direction "SPOTIFY_TO_YOUTUBE" -Job $result.job -Report $result.report -BaseUrlValue $BaseUrl
     }
 
     Invoke-Step -Name "POST /migrate + poll (YOUTUBE_TO_SPOTIFY)" -Action {
@@ -160,10 +260,28 @@ if ($RunMigration) {
 
         Write-Host "Final status: $($result.job.status)"
         Write-Host ($result.report | ConvertTo-Json -Depth 10)
+        Show-QuotaGuidance -Direction "YOUTUBE_TO_SPOTIFY" -Job $result.job -Report $result.report -BaseUrlValue $BaseUrl
+    }
+}
+
+if ($ResumeJobIds.Count -gt 0) {
+    foreach ($jobId in $ResumeJobIds) {
+        Invoke-Step -Name "POST /migrate/$jobId/resume + poll" -Action {
+            $result = Resume-JobAndPoll -JobId $jobId -BaseUrlValue $BaseUrl -MaxPollSeconds $PollSeconds -RetryFailed:$RetryFailedAfterResume
+            Write-Host "Final status: $($result.job.status)"
+            Write-Host ($result.report | ConvertTo-Json -Depth 10)
+            Show-QuotaGuidance -Direction "RESUME" -Job $result.job -Report $result.report -BaseUrlValue $BaseUrl
+        }
     }
 }
 
 Write-Host ""
+if ($quotaSignals.Count -gt 0) {
+    Write-Host "Quota summary:" -ForegroundColor Yellow
+    $quotaSignals | ForEach-Object { Write-Host "- $_" -ForegroundColor Yellow }
+    Write-Host ""
+}
+
 if ($failed) {
     Write-Host "Phase 7 validation completed with failures." -ForegroundColor Red
     exit 1
