@@ -135,3 +135,26 @@ Checks:
 - `GET /diagnose`
 - `GET /migrate/history`
 - `POST /migrate/preflight`
+
+### Phase 7 authenticated E2E validation (PowerShell)
+
+Use this when you have real Spotify and Google tokens and want one command to validate both migration directions.
+
+```powershell
+./scripts/phase7-e2e-validate.ps1 `
+  -BaseUrl "https://your-backend-domain" `
+  -SpotifyAccessToken "<spotify_access_token>" `
+  -GoogleAccessToken "<google_access_token_with_youtube_force_ssl_scope>" `
+  -SpotifySourcePlaylistUrl "https://open.spotify.com/playlist/<playlist_id>" `
+  -YouTubeSourcePlaylistUrl "https://music.youtube.com/playlist?list=<playlist_id>"
+```
+
+Optional full migration run (starts jobs and polls until terminal status):
+
+```powershell
+./scripts/phase7-e2e-validate.ps1 `
+  -BaseUrl "https://your-backend-domain" `
+  -SpotifyAccessToken "<spotify_access_token>" `
+  -GoogleAccessToken "<google_access_token_with_youtube_force_ssl_scope>" `
+  -RunMigration
+```

@@ -46,6 +46,8 @@ public class MigrationAsyncProcessor {
         "LOW_CONFIDENCE_FALLBACK: best candidate accepted to keep migration reliable";
     private static final String NO_CANDIDATE_FALLBACK_REASON =
         "SAFE_FALLBACK: no candidates returned, linked YouTube Music search result";
+    private static final String NO_SPOTIFY_CANDIDATE_FALLBACK_REASON =
+        "SAFE_FALLBACK: no Spotify candidates returned, linked Spotify search result";
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
     private static final int BATCH_SIZE = 20;
     private static final int QUOTA_UNITS_PER_SPOTIFY_TO_YOUTUBE_TRACK = 101;
@@ -757,8 +759,17 @@ public class MigrationAsyncProcessor {
                 spotifyAccessToken
             );
             if (candidates.isEmpty()) {
-                markTrackAsFailed(migrationTrack, "FAILED: No Spotify match found for source track");
-                return false;
+                applySpotifySearchFallbackMatch(
+                    migrationTrack,
+                    sourceTrack,
+                    NO_SPOTIFY_CANDIDATE_FALLBACK_REASON
+                );
+                log.warn(
+                    "Spotify destination lookup returned no candidates for source='{}' artist='{}'; using Spotify search fallback",
+                    sourceTrack.name(),
+                    sourceTrack.artist()
+                );
+                return true;
             }
 
             SpotifyClient.SpotifySearchCandidate bestCandidate = candidates.get(0);
@@ -778,9 +789,10 @@ public class MigrationAsyncProcessor {
             spotifyClient.addTrackToPlaylist(spotifyAccessToken, targetPlaylistId, bestCandidate.uri());
             return true;
         } catch (RuntimeException ex) {
-            markTrackAsPartial(
+            applySpotifySearchFallbackMatch(
                 migrationTrack,
-                "PARTIAL: matched for review, but could not add track to Spotify playlist: " + summarizeError(ex)
+                sourceTrack,
+                "SAFE_FALLBACK: Spotify lookup unavailable, linked Spotify search result"
             );
             log.warn(
                 "Spotify destination lookup failed for source='{}' artist='{}' reason={}",
@@ -790,6 +802,23 @@ public class MigrationAsyncProcessor {
             );
             return true;
         }
+    }
+
+    private void applySpotifySearchFallbackMatch(MigrationTrack migrationTrack, SpotifyTrack sourceTrack, String reason) {
+        String searchQuery = (Objects.requireNonNullElse(sourceTrack.name(), "") + " "
+            + Objects.requireNonNullElse(sourceTrack.artist(), "")).trim();
+        String encoded = URLEncoder.encode(searchQuery, StandardCharsets.UTF_8);
+
+        migrationTrack.setMatchStatus(TrackMatchStatus.PARTIAL);
+        migrationTrack.setConfidenceScore(0.0);
+        migrationTrack.setMatchScore(0.0);
+        migrationTrack.setTargetTrackId("search:" + encoded);
+        migrationTrack.setTargetTrackUrl("https://open.spotify.com/search/" + encoded);
+        migrationTrack.setTargetTrackTitle(searchQuery.isBlank() ? "Spotify Search" : searchQuery + " (Search)");
+        migrationTrack.setTargetThumbnailUrl(null);
+        migrationTrack.setYouTubeTitle(null);
+        migrationTrack.setYouTubeVideoId(null);
+        migrationTrack.setFailureReason(reason);
     }
 
     private String summarizeError(Exception ex) {

@@ -1,6 +1,7 @@
 package com.soundbridge.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
@@ -127,5 +128,36 @@ class MigrationAsyncProcessorTest {
         assertEquals(1, job.getMatchedTracks());
         assertEquals(0, job.getFailedTracks());
         assertEquals(TrackMatchStatus.PARTIAL, trackCaptor.getValue().getMatchStatus());
+    }
+
+    @Test
+    void processMigrationUsesSpotifySearchFallbackWhenNoSpotifyCandidateExists() {
+        UUID jobId = UUID.randomUUID();
+        MigrationJob job = new MigrationJob();
+        job.setId(jobId);
+        job.setTargetPlatform("SPOTIFY");
+        job.setSourcePlaylistUrl("https://music.youtube.com/playlist?list=abc");
+        job.setGoogleAccessToken("google-token");
+        job.setSpotifyAccessToken("spotify-token");
+
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        when(jobRepository.saveAndFlush(any(MigrationJob.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(trackRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(youTubeMusicClient.fetchPlaylistTracks(anyString(), any())).thenReturn(List.of(
+            new SpotifyTrack("Dreams", "Fleetwood Mac", "Rumours", 257800L)
+        ));
+        when(spotifyClient.searchTrackCandidates(anyString(), anyString(), anyString())).thenReturn(List.of());
+
+        processor.processMigration(jobId);
+
+        ArgumentCaptor<MigrationTrack> trackCaptor = ArgumentCaptor.forClass(MigrationTrack.class);
+        verify(trackRepository).save(trackCaptor.capture());
+
+        assertEquals(JobStatus.COMPLETED, job.getStatus());
+        assertEquals(1, job.getMatchedTracks());
+        assertEquals(0, job.getFailedTracks());
+        assertEquals(TrackMatchStatus.PARTIAL, trackCaptor.getValue().getMatchStatus());
+        assertTrue(trackCaptor.getValue().getTargetTrackUrl().startsWith("https://open.spotify.com/search/"));
     }
 }

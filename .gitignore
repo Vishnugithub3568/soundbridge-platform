@@ -11,3 +11,8 @@ target
 BUILD_PHASE_PRD.md
 PHASE*_STEP*_CHECKLIST_REPORT.md
 tmp-*.json
+
+# Operational markdown/text artifacts that are not part of the runtime implementation
+*.md
+!README.md
+*.txt
