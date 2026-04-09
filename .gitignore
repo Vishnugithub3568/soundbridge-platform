@@ -6,3 +6,8 @@ frontend/.env.local
 frontend/node_modules
 frontend/dist
 target
+
+# Temporary phase-planning docs
+BUILD_PHASE_PRD.md
+PHASE*_STEP*_CHECKLIST_REPORT.md
+tmp-*.json

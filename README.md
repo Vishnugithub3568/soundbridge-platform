@@ -1,12 +1,17 @@
 # SoundBridge Platform
 
-SoundBridge helps users migrate music from Spotify to YouTube Music with a fast, reliable Spring Boot + React experience.
+SoundBridge migrates playlists between Spotify and YouTube Music using a Spring Boot backend and a React/Vite frontend.
 
-End-to-end scaffold for Spotify to YouTube Music migration flow with a Spring Boot backend and React/Vite frontend.
+## Runtime Architecture
 
-## Backend
+- Backend: Spring Boot API on port `9000`
+- Frontend: Vite app on port `5173`
+- Local database: H2 (auto-initialized from `src/main/resources/schema.sql`)
+- Optional production database: Supabase/Postgres (`supabase-schema.sql` and `supabase-migration-2026-04-05-fk-hardening.sql`)
 
-### Run
+## Local Development
+
+### 1. Backend
 
 ```bash
 mvn spring-boot:run
@@ -14,37 +19,7 @@ mvn spring-boot:run
 
 Backend URL: `http://localhost:9000`
 
-### Build
-
-```bash
-mvn clean package -DskipTests
-```
-
-### Smoke Check (PowerShell)
-
-Run a quick backend verification after restart/deploy:
-
-```powershell
-./scripts/deploy-smoke-check.ps1
-```
-
-Optional parameters:
-
-```powershell
-./scripts/deploy-smoke-check.ps1 -BaseUrl "https://your-backend-domain" -UserId "11111111-1111-1111-1111-111111111111"
-```
-
-### Endpoints
-
-- `GET /health`
-- `POST /migrate`
-- `POST /migrate/preflight`
-- `GET /migrate/history?userId=<uuid>&limit=20`
-- `GET /migrate/{jobId}`
-- `GET /migrate/{jobId}/tracks`
-- `GET /migrate/{jobId}/report`
-
-## Frontend
+### 2. Frontend
 
 ```bash
 cd frontend
@@ -54,7 +29,15 @@ npm run dev
 
 Frontend URL: `http://localhost:5173`
 
-### Production Build
+## Build Commands
+
+### Backend build
+
+```bash
+mvn clean package -DskipTests
+```
+
+### Frontend production build
 
 ```bash
 cd frontend
@@ -62,61 +45,93 @@ npm ci
 npm run build
 ```
 
-## Database
+## Required Environment Variables
 
-- Default local runtime uses H2 in-memory DB with startup schema initialization (`src/main/resources/schema.sql`).
-- For Supabase/Postgres, set datasource env vars from `.env.example` and run SQL from `supabase-schema.sql`.
+### Backend (Render or local)
 
-## Deployment Notes
+- `SPOTIFY_CLIENT_ID`
+- `SPOTIFY_CLIENT_SECRET`
+- `YOUTUBE_API_KEY`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `CORS_ALLOWED_ORIGINS`
 
-- Required secrets: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `YOUTUBE_API_KEY`
-- Reliability config:
-	- `SPOTIFY_SAFE_FALLBACK_ENABLED=false` (default)
-	- `YOUTUBE_MATCH_THRESHOLD=0.45`
-	- `YOUTUBE_RETRY_MATCH_THRESHOLD=0.40`
-   - `YOUTUBE_MATCH_STRICT_THRESHOLD=0.72`
-   - `YOUTUBE_MATCH_TITLE_WEIGHT=0.62`
-   - `YOUTUBE_MATCH_ARTIST_WEIGHT=0.38`
-   - `YOUTUBE_MATCH_INDICATOR_MISMATCH_PENALTY=0.18`
-   - `YOUTUBE_MATCH_INDICATOR_MATCH_BONUS=0.04`
-   - `YOUTUBE_MATCH_ARTIST_TITLE_CROSS_WEIGHT=0.55`
+### Backend recommended match/reliability tuning
 
-- Google OAuth note:
-   - If Google shows `access_denied` and says the app has not completed verification, add your Google account as a Test user in the Google Cloud OAuth consent screen or publish the app.
-   - The migration flow requires YouTube write scope: `https://www.googleapis.com/auth/youtube.force-ssl`.
+- `SPOTIFY_SAFE_FALLBACK_ENABLED=false`
+- `YOUTUBE_MATCH_THRESHOLD=0.45`
+- `YOUTUBE_RETRY_MATCH_THRESHOLD=0.40`
+- `YOUTUBE_MATCH_STRICT_THRESHOLD=0.72`
+- `YOUTUBE_MATCH_TITLE_WEIGHT=0.62`
+- `YOUTUBE_MATCH_ARTIST_WEIGHT=0.38`
+- `YOUTUBE_MATCH_INDICATOR_MISMATCH_PENALTY=0.18`
+- `YOUTUBE_MATCH_INDICATOR_MATCH_BONUS=0.04`
+- `YOUTUBE_MATCH_ARTIST_TITLE_CROSS_WEIGHT=0.55`
 
-### Google Cloud Console Steps
+### Frontend (Vercel)
 
-1. Open Google Cloud Console and select the project used by this app.
-2. Go to APIs & Services, then OAuth consent screen.
-3. If the app is in Testing, add your Gmail address under Test users.
-4. Confirm the authorized redirect URI matches the frontend callback URL.
-5. Reconnect Google in the app and approve the YouTube permission prompt again.
+- `VITE_API_URL=https://<your-backend-domain>`
+- `VITE_SPOTIFY_CLIENT_ID=<your-spotify-app-client-id>`
+- `VITE_SPOTIFY_REDIRECT_URI=https://<your-vercel-app>.vercel.app`
+- `VITE_GOOGLE_CLIENT_ID=<your-google-client-id>`
+- `VITE_GOOGLE_REDIRECT_URI=https://<your-vercel-app>.vercel.app/auth/google/callback`
 
-## Private Spotify Playlists
+## OAuth Requirements
 
-- Public playlists can migrate with backend app credentials (`SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`).
-- Private or collaborative playlists require a Spotify user access token with scopes:
+### Spotify
+
+- Private/collaborative source playlists need user token scopes:
   - `playlist-read-private`
   - `playlist-read-collaborative`
-- Configure frontend env with `VITE_SPOTIFY_CLIENT_ID`.
-- Configure frontend env with `VITE_SPOTIFY_REDIRECT_URI` that exactly matches Spotify app settings.
-- In the UI, use `Login with Spotify` to connect via Authorization Code + PKCE.
-- After login, the access token is forwarded automatically during migration requests.
+- Spotify destination playlist creation requires user login and valid token.
 
-## Vercel Frontend Deployment
+### Google / YouTube
 
-1. Import the repository in Vercel.
-2. Set the root directory to `frontend`.
-3. Keep defaults:
-   - Build command: `npm run build`
-   - Output directory: `dist`
-4. Add environment variable in Vercel:
-   - `VITE_API_URL=https://<your-backend-domain>`
-   - `VITE_SPOTIFY_CLIENT_ID=<your-spotify-app-client-id>`
-   - `VITE_SPOTIFY_REDIRECT_URI=https://<your-vercel-app>.vercel.app`
+- Required scope for write operations: `https://www.googleapis.com/auth/youtube.force-ssl`
+- If Google shows `access_denied` in testing mode, add your account as a Test User in OAuth consent screen.
 
-Backend must allow your Vercel origin through CORS:
+## Deployment
 
-- `CORS_ALLOWED_ORIGINS=https://<your-vercel-app>.vercel.app`
-- For previews, you can provide multiple comma-separated origins.
+### Backend on Render
+
+1. Deploy from this repository.
+2. Set all backend environment variables listed above.
+3. Ensure `CORS_ALLOWED_ORIGINS` includes your Vercel domain(s).
+4. Verify health endpoint: `GET /health`.
+
+### Frontend on Vercel
+
+1. Import repository and set root directory to `frontend`.
+2. Build command: `npm run build`
+3. Output directory: `dist`
+4. Set all frontend environment variables listed above.
+
+## API Endpoints
+
+- `GET /health`
+- `GET /diagnose`
+- `POST /migrate`
+- `POST /migrate/preflight`
+- `GET /migrate/history?userId=<uuid>&limit=20`
+- `GET /migrate/{jobId}`
+- `GET /migrate/{jobId}/tracks`
+- `GET /migrate/{jobId}/report`
+
+## Validation Checklist
+
+### Local validation
+
+1. Backend compile: `mvn -DskipTests compile`
+2. Frontend build: `cd frontend && npm run build`
+
+### Post-deploy smoke check (PowerShell)
+
+```powershell
+./scripts/deploy-smoke-check.ps1 -BaseUrl "https://your-backend-domain" -UserId "11111111-1111-1111-1111-111111111111"
+```
+
+Checks:
+- `GET /health`
+- `GET /diagnose`
+- `GET /migrate/history`
+- `POST /migrate/preflight`
