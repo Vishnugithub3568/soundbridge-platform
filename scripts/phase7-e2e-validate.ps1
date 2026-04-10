@@ -21,6 +21,38 @@ $quotaSignals = @()
 
 $terminalStatuses = @("COMPLETED", "FAILED", "PARTIAL_SUCCESS", "QUOTA_PAUSED")
 
+function Test-LooksLikePlaceholder {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $true
+    }
+
+    $trimmed = $Value.Trim()
+    return $trimmed.StartsWith("<") -and $trimmed.EndsWith(">")
+}
+
+function Assert-RealInputs {
+    if (Test-LooksLikePlaceholder $SpotifyAccessToken) {
+        throw "SpotifyAccessToken is a placeholder. Replace <spotify_token> with a real OAuth access token."
+    }
+
+    if (Test-LooksLikePlaceholder $GoogleAccessToken) {
+        throw "GoogleAccessToken is a placeholder. Replace <google_token> with a real OAuth access token."
+    }
+
+    foreach ($jobId in $ResumeJobIds) {
+        if (Test-LooksLikePlaceholder $jobId) {
+            throw "ResumeJobIds contains a placeholder value. Replace <job_id_*> with real job UUID(s)."
+        }
+
+        $parsedGuid = [Guid]::Empty
+        if (-not [Guid]::TryParse($jobId, [ref]$parsedGuid)) {
+            throw "ResumeJobIds contains an invalid UUID: '$jobId'"
+        }
+    }
+}
+
 function Invoke-Step {
     param(
         [string]$Name,
@@ -194,6 +226,8 @@ Write-Host "Run migration mode: $RunMigration"
 if ($ResumeJobIds.Count -gt 0) {
     Write-Host "Resume mode job ids: $($ResumeJobIds -join ', ')"
 }
+
+Assert-RealInputs
 
 Invoke-Step -Name "GET /health" -Action {
     $resp = Invoke-RestMethod -Method GET -Uri "$BaseUrl/health" -TimeoutSec 20
