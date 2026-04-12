@@ -59,6 +59,7 @@ public class MigrationAsyncProcessor {
     private static final Pattern NOISE_TERMS_PATTERN = Pattern.compile(
         "\\b(official|video|audio|lyrics?|lyric|version|remaster(ed)?|mono|stereo|topic|hq|hd)\\b"
     );
+    private static final int SPOTIFY_CANDIDATE_ATTEMPT_LIMIT = 5;
     private static final int MAX_TRACK_SLEEP_MS = 5_000;
     private static final int MAX_ADAPTIVE_COOLDOWN_MS = 20_000;
 
@@ -772,21 +773,22 @@ public class MigrationAsyncProcessor {
                 return true;
             }
 
-            SpotifyClient.SpotifySearchCandidate bestCandidate = candidates.get(0);
-            migrationTrack.setMatchStatus(TrackMatchStatus.MATCHED);
-            migrationTrack.setConfidenceScore(1.0);
-            migrationTrack.setMatchScore(1.0);
-            migrationTrack.setTargetTrackId(bestCandidate.id());
-            migrationTrack.setTargetTrackUrl(bestCandidate.externalUrl().isBlank()
-                ? "https://open.spotify.com/track/" + bestCandidate.id()
-                : bestCandidate.externalUrl());
-            migrationTrack.setTargetTrackTitle(bestCandidate.name());
-            migrationTrack.setTargetThumbnailUrl(bestCandidate.thumbnailUrl());
-            migrationTrack.setYouTubeTitle(null);
-            migrationTrack.setYouTubeVideoId(null);
-            migrationTrack.setFailureReason(null);
-
-            spotifyClient.addTrackToPlaylist(spotifyAccessToken, targetPlaylistId, bestCandidate.uri());
+            boolean added = tryAddCandidateToSpotifyPlaylist(
+                migrationTrack,
+                sourceTrack,
+                targetPlaylistId,
+                spotifyAccessToken,
+                candidates
+            );
+            if (!added) {
+                String message = "SAFE_FALLBACK: Spotify candidates found but all playlist add attempts failed";
+                applySpotifySearchFallbackMatch(migrationTrack, sourceTrack, message);
+                log.warn(
+                    "Spotify destination add failed for all candidates source='{}' artist='{}'; using fallback",
+                    sourceTrack.name(),
+                    sourceTrack.artist()
+                );
+            }
             return true;
         } catch (RuntimeException ex) {
             applySpotifySearchFallbackMatch(
@@ -802,6 +804,93 @@ public class MigrationAsyncProcessor {
             );
             return true;
         }
+    }
+
+    private boolean tryAddCandidateToSpotifyPlaylist(
+        MigrationTrack migrationTrack,
+        SpotifyTrack sourceTrack,
+        String targetPlaylistId,
+        String spotifyAccessToken,
+        List<SpotifyClient.SpotifySearchCandidate> candidates
+    ) {
+        RuntimeException lastAddError = null;
+        int attempts = Math.min(SPOTIFY_CANDIDATE_ATTEMPT_LIMIT, candidates.size());
+
+        for (int index = 0; index < attempts; index++) {
+            SpotifyClient.SpotifySearchCandidate candidate = candidates.get(index);
+            if (candidate == null || candidate.id() == null || candidate.id().isBlank()) {
+                continue;
+            }
+
+            try {
+                String candidateUri = buildSpotifyTrackUri(candidate);
+                if (candidateUri.isBlank()) {
+                    continue;
+                }
+
+                spotifyClient.addTrackToPlaylist(spotifyAccessToken, targetPlaylistId, candidateUri);
+
+                migrationTrack.setMatchStatus(TrackMatchStatus.MATCHED);
+                migrationTrack.setConfidenceScore(1.0);
+                migrationTrack.setMatchScore(1.0);
+                migrationTrack.setTargetTrackId(candidate.id());
+                migrationTrack.setTargetTrackUrl(candidate.externalUrl().isBlank()
+                    ? "https://open.spotify.com/track/" + candidate.id()
+                    : candidate.externalUrl());
+                migrationTrack.setTargetTrackTitle(candidate.name());
+                migrationTrack.setTargetThumbnailUrl(candidate.thumbnailUrl());
+                migrationTrack.setYouTubeTitle(null);
+                migrationTrack.setYouTubeVideoId(null);
+                migrationTrack.setFailureReason(null);
+
+                if (index > 0) {
+                    log.info(
+                        "Spotify destination recovered by alternate candidate source='{}' artist='{}' chosenCandidateIndex={} candidateId={}",
+                        sourceTrack.name(),
+                        sourceTrack.artist(),
+                        index,
+                        candidate.id()
+                    );
+                }
+
+                return true;
+            } catch (RuntimeException addError) {
+                lastAddError = addError;
+                log.debug(
+                    "Spotify add attempt failed source='{}' artist='{}' candidateIndex={} candidateId={} reason={}",
+                    sourceTrack.name(),
+                    sourceTrack.artist(),
+                    index,
+                    candidate.id(),
+                    summarizeError(addError)
+                );
+            }
+        }
+
+        if (lastAddError != null) {
+            log.warn(
+                "Spotify destination candidate attempts exhausted source='{}' artist='{}' reason={}",
+                sourceTrack.name(),
+                sourceTrack.artist(),
+                summarizeError(lastAddError)
+            );
+        }
+
+        return false;
+    }
+
+    private String buildSpotifyTrackUri(SpotifyClient.SpotifySearchCandidate candidate) {
+        String uri = Objects.requireNonNullElse(candidate.uri(), "").trim();
+        if (!uri.isBlank()) {
+            return uri;
+        }
+
+        String id = Objects.requireNonNullElse(candidate.id(), "").trim();
+        if (id.isBlank()) {
+            return "";
+        }
+
+        return "spotify:track:" + id;
     }
 
     private void applySpotifySearchFallbackMatch(MigrationTrack migrationTrack, SpotifyTrack sourceTrack, String reason) {

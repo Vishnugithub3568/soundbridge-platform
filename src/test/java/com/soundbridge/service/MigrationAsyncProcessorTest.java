@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -22,6 +23,7 @@ import com.soundbridge.repository.MigrationTrackRepository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.mockito.ArgumentMatchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -159,5 +161,69 @@ class MigrationAsyncProcessorTest {
         assertEquals(0, job.getFailedTracks());
         assertEquals(TrackMatchStatus.PARTIAL, trackCaptor.getValue().getMatchStatus());
         assertTrue(trackCaptor.getValue().getTargetTrackUrl().startsWith("https://open.spotify.com/search/"));
+    }
+
+    @Test
+    void processMigrationTriesAlternateSpotifyCandidateWhenFirstAddFails() {
+        UUID jobId = UUID.randomUUID();
+        MigrationJob job = new MigrationJob();
+        job.setId(jobId);
+        job.setTargetPlatform("SPOTIFY");
+        job.setSourcePlaylistUrl("https://music.youtube.com/playlist?list=abc");
+        job.setGoogleAccessToken("google-token");
+        job.setSpotifyAccessToken("spotify-token");
+
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        when(jobRepository.saveAndFlush(any(MigrationJob.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(trackRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(youTubeMusicClient.fetchPlaylistTracks(anyString(), any())).thenReturn(List.of(
+            new SpotifyTrack("Dreams", "Fleetwood Mac", "Rumours", 257800L)
+        ));
+        when(spotifyClient.createPlaylist(anyString(), anyString(), anyString())).thenReturn("target-playlist-id");
+        when(spotifyClient.searchTrackCandidates(anyString(), anyString(), anyString())).thenReturn(List.of(
+            new SpotifyClient.SpotifySearchCandidate(
+                "bad-id",
+                "spotify:track:bad-id",
+                "Dreams",
+                "Fleetwood Mac",
+                "Rumours",
+                "https://open.spotify.com/track/bad-id",
+                null
+            ),
+            new SpotifyClient.SpotifySearchCandidate(
+                "good-id",
+                "spotify:track:good-id",
+                "Dreams",
+                "Fleetwood Mac",
+                "Rumours",
+                "https://open.spotify.com/track/good-id",
+                null
+            )
+        ));
+
+        doThrow(new RuntimeException("first add failed")).when(spotifyClient)
+            .addTrackToPlaylist(anyString(), ArgumentMatchers.eq("target-playlist-id"), ArgumentMatchers.eq("spotify:track:bad-id"));
+
+        processor.processMigration(jobId);
+
+        ArgumentCaptor<MigrationTrack> trackCaptor = ArgumentCaptor.forClass(MigrationTrack.class);
+        verify(trackRepository).save(trackCaptor.capture());
+        verify(spotifyClient).addTrackToPlaylist(
+            anyString(),
+            ArgumentMatchers.eq("target-playlist-id"),
+            ArgumentMatchers.eq("spotify:track:bad-id")
+        );
+        verify(spotifyClient).addTrackToPlaylist(
+            anyString(),
+            ArgumentMatchers.eq("target-playlist-id"),
+            ArgumentMatchers.eq("spotify:track:good-id")
+        );
+
+        assertEquals(JobStatus.COMPLETED, job.getStatus());
+        assertEquals(1, job.getMatchedTracks());
+        assertEquals(0, job.getFailedTracks());
+        assertEquals(TrackMatchStatus.MATCHED, trackCaptor.getValue().getMatchStatus());
+        assertEquals("good-id", trackCaptor.getValue().getTargetTrackId());
     }
 }
