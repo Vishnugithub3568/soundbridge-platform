@@ -41,6 +41,7 @@ const GOOGLE_PKCE_VERIFIER_KEY = 'google_pkce_verifier';
 const GOOGLE_PKCE_STATE_KEY = 'google_pkce_state';
 const GOOGLE_TOKEN_CACHE_KEY = 'google_oauth_token';
 const GOOGLE_ID_TOKEN_CACHE_KEY = 'google_oauth_id_token';
+const OAUTH_PENDING_PROVIDER_KEY = 'soundbridge_oauth_pending_provider';
 const GOOGLE_REQUIRED_SCOPE_MESSAGE =
   'Google token is missing YouTube permission. Reconnect Google and approve YouTube access.';
 const SPOTIFY_REQUIRED_WRITE_SCOPE_MESSAGE =
@@ -336,6 +337,47 @@ function cacheGoogleToken(token, expiresInSeconds, idToken, scope) {
   window.localStorage.setItem(GOOGLE_TOKEN_CACHE_KEY, payload);
   if (idToken) {
     window.localStorage.setItem(GOOGLE_ID_TOKEN_CACHE_KEY, idToken);
+  }
+}
+
+function clearOAuthPendingState(provider) {
+  try {
+    if (provider === 'spotify') {
+      window.localStorage.removeItem(SPOTIFY_PKCE_VERIFIER_KEY);
+      window.localStorage.removeItem(SPOTIFY_PKCE_STATE_KEY);
+    } else if (provider === 'google') {
+      window.localStorage.removeItem(GOOGLE_PKCE_VERIFIER_KEY);
+      window.localStorage.removeItem(GOOGLE_PKCE_STATE_KEY);
+    } else {
+      window.localStorage.removeItem(SPOTIFY_PKCE_VERIFIER_KEY);
+      window.localStorage.removeItem(SPOTIFY_PKCE_STATE_KEY);
+      window.localStorage.removeItem(GOOGLE_PKCE_VERIFIER_KEY);
+      window.localStorage.removeItem(GOOGLE_PKCE_STATE_KEY);
+    }
+
+    window.localStorage.removeItem(OAUTH_PENDING_PROVIDER_KEY);
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function setOAuthPendingProvider(provider) {
+  try {
+    if (provider) {
+      window.localStorage.setItem(OAUTH_PENDING_PROVIDER_KEY, provider);
+    } else {
+      window.localStorage.removeItem(OAUTH_PENDING_PROVIDER_KEY);
+    }
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function readOAuthPendingProvider() {
+  try {
+    return String(window.localStorage.getItem(OAUTH_PENDING_PROVIDER_KEY) || '').trim().toLowerCase();
+  } catch {
+    return '';
   }
 }
 
@@ -952,12 +994,14 @@ function MigrationPage() {
 
     try {
       setSpotifyAuthLoading(true);
+      clearOAuthPendingState();
       const verifier = randomString(64);
       const state = randomString(24);
       const challenge = encodeBase64Url(await sha256(verifier));
 
       window.localStorage.setItem(SPOTIFY_PKCE_VERIFIER_KEY, verifier);
       window.localStorage.setItem(SPOTIFY_PKCE_STATE_KEY, state);
+      setOAuthPendingProvider('spotify');
 
       const authorizeUrl = new URL('https://accounts.spotify.com/authorize');
       authorizeUrl.searchParams.set('response_type', 'code');
@@ -971,6 +1015,7 @@ function MigrationPage() {
       window.location.assign(authorizeUrl.toString());
     } catch {
       setSpotifyAuthLoading(false);
+      clearOAuthPendingState('spotify');
       setError(`Failed to start Spotify login. Ensure this exact redirect URI is added in Spotify app settings: ${spotifyRedirectUri}`);
     }
   };
@@ -993,12 +1038,14 @@ function MigrationPage() {
 
     try {
       setGoogleAuthLoading(true);
+      clearOAuthPendingState();
       const verifier = randomString(64);
       const state = randomString(24);
       const challenge = encodeBase64Url(await sha256(verifier));
 
       window.localStorage.setItem(GOOGLE_PKCE_VERIFIER_KEY, verifier);
       window.localStorage.setItem(GOOGLE_PKCE_STATE_KEY, state);
+      setOAuthPendingProvider('google');
 
       const authorizeUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       authorizeUrl.searchParams.set('response_type', 'code');
@@ -1015,6 +1062,7 @@ function MigrationPage() {
       window.location.assign(authorizeUrl.toString());
     } catch {
       setGoogleAuthLoading(false);
+      clearOAuthPendingState('google');
       setError(`Failed to start Google login. Ensure this exact redirect URI is added in Google Cloud Console: ${googleRedirectUri}`);
     }
   };
@@ -1031,7 +1079,7 @@ function MigrationPage() {
 
   useEffect(() => {
     const hasPendingSpotifyAuth = Boolean(window.localStorage.getItem(SPOTIFY_PKCE_STATE_KEY));
-    if (!hasPendingSpotifyAuth) {
+    if (!hasPendingSpotifyAuth || readOAuthPendingProvider() !== 'spotify') {
       return;
     }
 
@@ -1053,6 +1101,7 @@ function MigrationPage() {
       clearQueryParams();
       setError(`Spotify login failed: ${authError}`);
       setSpotifyAuthLoading(false);
+      clearOAuthPendingState('spotify');
       return;
     }
 
@@ -1063,6 +1112,7 @@ function MigrationPage() {
       clearQueryParams();
       setError('Spotify login failed: invalid OAuth state. Please try again.');
       setSpotifyAuthLoading(false);
+      clearOAuthPendingState('spotify');
       return;
     }
 
@@ -1102,8 +1152,7 @@ function MigrationPage() {
       } catch (exchangeError) {
         setError(exchangeError.message || 'Failed to complete Spotify login.');
       } finally {
-        window.localStorage.removeItem(SPOTIFY_PKCE_VERIFIER_KEY);
-        window.localStorage.removeItem(SPOTIFY_PKCE_STATE_KEY);
+        clearOAuthPendingState('spotify');
         clearQueryParams();
         setSpotifyAuthLoading(false);
       }
@@ -1114,7 +1163,7 @@ function MigrationPage() {
 
   useEffect(() => {
     const hasPendingGoogleAuth = Boolean(window.localStorage.getItem(GOOGLE_PKCE_STATE_KEY));
-    if (!hasPendingGoogleAuth) {
+    if (!hasPendingGoogleAuth || readOAuthPendingProvider() !== 'google') {
       return;
     }
 
@@ -1136,6 +1185,7 @@ function MigrationPage() {
       clearQueryParams();
       setError(describeGoogleAuthError(authError));
       setGoogleAuthLoading(false);
+      clearOAuthPendingState('google');
       return;
     }
 
@@ -1146,6 +1196,7 @@ function MigrationPage() {
       clearQueryParams();
       setError('Google login failed: invalid OAuth state. Please try again.');
       setGoogleAuthLoading(false);
+      clearOAuthPendingState('google');
       return;
     }
 
@@ -1187,8 +1238,7 @@ function MigrationPage() {
       } catch (exchangeError) {
         setError(exchangeError.message || 'Failed to complete Google login.');
       } finally {
-        window.localStorage.removeItem(GOOGLE_PKCE_VERIFIER_KEY);
-        window.localStorage.removeItem(GOOGLE_PKCE_STATE_KEY);
+        clearOAuthPendingState('google');
         clearQueryParams();
         setGoogleAuthLoading(false);
       }
