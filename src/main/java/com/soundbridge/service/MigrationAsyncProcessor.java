@@ -773,15 +773,16 @@ public class MigrationAsyncProcessor {
                 return true;
             }
 
-            boolean added = tryAddCandidateToSpotifyPlaylist(
+            RuntimeException addFailure = tryAddCandidateToSpotifyPlaylist(
                 migrationTrack,
                 sourceTrack,
                 targetPlaylistId,
                 spotifyAccessToken,
                 candidates
             );
-            if (!added) {
-                String message = "SAFE_FALLBACK: Spotify candidates found but all playlist add attempts failed";
+            if (addFailure != null) {
+                String message = "SAFE_FALLBACK: Spotify candidates found but all playlist add attempts failed: "
+                    + summarizeError(addFailure);
                 applySpotifySearchFallbackMatch(migrationTrack, sourceTrack, message);
                 log.warn(
                     "Spotify destination add failed for all candidates source='{}' artist='{}'; using fallback",
@@ -806,7 +807,7 @@ public class MigrationAsyncProcessor {
         }
     }
 
-    private boolean tryAddCandidateToSpotifyPlaylist(
+    private RuntimeException tryAddCandidateToSpotifyPlaylist(
         MigrationTrack migrationTrack,
         SpotifyTrack sourceTrack,
         String targetPlaylistId,
@@ -853,7 +854,7 @@ public class MigrationAsyncProcessor {
                     );
                 }
 
-                return true;
+                return null;
             } catch (RuntimeException addError) {
                 lastAddError = addError;
                 log.debug(
@@ -876,7 +877,9 @@ public class MigrationAsyncProcessor {
             );
         }
 
-        return false;
+        return lastAddError == null
+            ? new IllegalStateException("No valid Spotify candidate URI was available for playlist insertion")
+            : lastAddError;
     }
 
     private String buildSpotifyTrackUri(SpotifyClient.SpotifySearchCandidate candidate) {

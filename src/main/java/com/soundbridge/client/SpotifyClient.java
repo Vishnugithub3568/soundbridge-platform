@@ -293,15 +293,22 @@ public class SpotifyClient {
 
         List<SpotifySearchCandidate> candidates = new ArrayList<>();
         Set<String> seenIds = new LinkedHashSet<>();
+        String normalizedUserToken = normalizeBearerToken(spotifyUserAccessToken);
+        boolean hasUserToken = !normalizedUserToken.isBlank();
 
         for (String query : queries) {
-            String url = UriComponentsBuilder
+            UriComponentsBuilder builder = UriComponentsBuilder
                 .fromUriString(apiBaseUrl + "/search")
                 .queryParam("q", query)
                 .queryParam("type", "track")
-                .queryParam("limit", 7)
-                .build()
-                .toUriString();
+                .queryParam("limit", 15);
+
+            if (hasUserToken) {
+                // Request only tracks playable for the authenticated Spotify user.
+                builder.queryParam("market", "from_token");
+            }
+
+            String url = builder.build().toUriString();
 
             JsonNode body = getAuthorizedJson(url, spotifyUserAccessToken);
             JsonNode items = body.path("tracks").path("items");
@@ -323,10 +330,10 @@ public class SpotifyClient {
                 }
 
                 candidates.add(new SpotifySearchCandidate(id, uri, name, artist, album, externalUrl, thumbnailUrl));
-            }
 
-            if (!candidates.isEmpty()) {
-                break;
+                if (candidates.size() >= 25) {
+                    return candidates;
+                }
             }
         }
 
