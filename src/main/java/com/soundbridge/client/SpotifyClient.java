@@ -195,11 +195,10 @@ public class SpotifyClient {
                 return publicTracks;
             }
 
-            log.warn(
-                "Spotify credentials are not configured and public page extraction failed for playlistId={}; using fallback demo tracks",
-                playlistId
+            throw new IllegalStateException(
+                "Spotify source playlist is not publicly readable and backend credentials are unavailable."
+                    + " Connect Spotify and retry for private/collaborative playlists."
             );
-            return fallbackDemoTracks();
         }
 
         List<SpotifyTrack> tracks = new ArrayList<>();
@@ -236,12 +235,11 @@ public class SpotifyClient {
             }
         } catch (RuntimeException ex) {
             if (hasUserToken && isUnauthorized(ex)) {
-                log.warn(
-                    "Spotify user token rejected for playlistId={} (reason={}); retrying without user token",
-                    playlistId,
-                    summarizeError(ex)
+                throw new IllegalStateException(
+                    "Spotify access token was rejected while reading source playlist."
+                        + " Reconnect Spotify and retry migration.",
+                    ex
                 );
-                return fetchPlaylistTracks(playlistUrl, null);
             }
 
             if (!hasUserToken) {
@@ -256,24 +254,22 @@ public class SpotifyClient {
                     return publicTracks;
                 }
 
+                throw new IllegalStateException(
+                    "Spotify source playlist could not be read from API or public page."
+                        + " If the playlist is private, reconnect Spotify and retry.",
+                    ex
+                );
+            }
+
+            if (safeFallbackEnabled && isSafeFallbackCandidate(ex)) {
                 log.warn(
-                    "Spotify API and public page extraction unavailable for playlistId={} (reason={}); using fallback demo tracks",
+                    "Spotify source fetch hit fallback candidate for playlistId={} (reason={}); failing safe to prevent incorrect track migration",
                     playlistId,
                     summarizeError(ex)
                 );
-                return fallbackDemoTracks();
             }
 
-            if (!(safeFallbackEnabled && isSafeFallbackCandidate(ex))) {
-                throw ex;
-            }
-
-            log.warn(
-                "Spotify playlist fetch unavailable for playlistId={} (reason={}); using configured fallback demo tracks",
-                playlistId,
-                summarizeError(ex)
-            );
-            return fallbackDemoTracks();
+            throw ex;
         }
 
         return tracks;
@@ -604,18 +600,6 @@ public class SpotifyClient {
         }
         int status = statusCodeException.getStatusCode().value();
         return status == 401 || status == 403;
-    }
-
-    private List<SpotifyTrack> fallbackDemoTracks() {
-        return List.of(
-            new SpotifyTrack("Blinding Lights", "The Weeknd", "After Hours", 200040L),
-            new SpotifyTrack("Levitating", "Dua Lipa", "Future Nostalgia", 203064L),
-            new SpotifyTrack("Believer", "Imagine Dragons", "Evolve", 204346L),
-            new SpotifyTrack("Shape of You", "Ed Sheeran", "Divide", 233712L),
-            new SpotifyTrack("Heat Waves", "Glass Animals", "Dreamland", 238805L),
-            new SpotifyTrack("As It Was", "Harry Styles", "Harry's House", 167303L),
-            new SpotifyTrack("Numb", "Linkin Park", "Meteora", 185586L)
-        );
     }
 
     private JsonNode getAuthorizedJson(String url, String spotifyUserAccessToken) {
