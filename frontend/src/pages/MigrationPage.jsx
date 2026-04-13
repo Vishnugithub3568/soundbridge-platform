@@ -540,6 +540,7 @@ function MigrationPage() {
   const googleRedirectUri = resolveRedirectUri(import.meta.env.VITE_GOOGLE_REDIRECT_URI, `${window.location.origin}/callback`);
 
   const canSubmit = useMemo(() => playlistUrl.trim().length > 0 && !loading, [playlistUrl, loading]);
+  const authInProgress = spotifyAuthLoading || googleAuthLoading;
 
   const progressPercent = useMemo(() => {
     if (!job || !job.totalTracks) {
@@ -627,6 +628,12 @@ function MigrationPage() {
       // ignore storage failures
     }
   }, [jobHistory]);
+
+  useEffect(() => {
+    if (menuOpen) {
+      setMenuOpen(false);
+    }
+  }, [view]);
 
   useEffect(() => {
     if (!appUserId) {
@@ -987,6 +994,10 @@ function MigrationPage() {
   const beginSpotifyLogin = async () => {
     setError('');
 
+    if (authInProgress) {
+      return;
+    }
+
     if (!spotifyClientId.trim()) {
       setError('Missing VITE_SPOTIFY_CLIENT_ID. Add it to frontend/.env or Vercel environment variables.');
       return;
@@ -1030,6 +1041,10 @@ function MigrationPage() {
 
   const beginGoogleLogin = async () => {
     setError('');
+
+    if (authInProgress) {
+      return;
+    }
 
     if (!googleClientId.trim()) {
       setError('Missing VITE_GOOGLE_CLIENT_ID. Add it to frontend/.env or Vercel environment variables.');
@@ -1686,7 +1701,7 @@ function MigrationPage() {
             <button
               type="button"
               onClick={beginSpotifyLogin}
-              disabled={spotifyAuthLoading}
+              disabled={authInProgress}
               className="glow-button-secondary inline-flex min-w-[150px] flex-1 items-center justify-center"
             >
               {spotifyAuthLoading ? 'Connecting...' : spotifyAccessToken ? 'Reconnect Spotify' : 'Login with Spotify'}
@@ -1695,6 +1710,7 @@ function MigrationPage() {
               <button
                 type="button"
                 onClick={disconnectSpotify}
+                disabled={authInProgress}
                 className="glow-button-secondary inline-flex min-w-[120px] flex-1 items-center justify-center border-rose-400/20 text-rose-200 hover:border-rose-300/30 hover:bg-rose-500/10"
               >
                 Disconnect
@@ -1719,7 +1735,7 @@ function MigrationPage() {
             <button
               type="button"
               onClick={beginGoogleLogin}
-              disabled={googleAuthLoading}
+              disabled={authInProgress}
               className="glow-button-secondary inline-flex min-w-[150px] flex-1 items-center justify-center"
             >
               {googleAuthLoading ? 'Connecting...' : googleAccessToken ? 'Reconnect Google' : 'Login with Google'}
@@ -1728,6 +1744,7 @@ function MigrationPage() {
               <button
                 type="button"
                 onClick={disconnectGoogle}
+                disabled={authInProgress}
                 className="glow-button-secondary inline-flex min-w-[120px] flex-1 items-center justify-center border-rose-400/20 text-rose-200 hover:border-rose-300/30 hover:bg-rose-500/10"
               >
                 Disconnect
@@ -1735,6 +1752,11 @@ function MigrationPage() {
             ) : null}
           </div>
         </div>
+        {authInProgress ? (
+          <div className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-400/10 px-4 py-3 text-xs leading-6 text-cyan-100">
+            OAuth redirect is in progress. Wait for the provider callback before starting another login.
+          </div>
+        ) : null}
         <div className="mt-4 rounded-2xl border border-amber-400/15 bg-amber-400/10 px-4 py-3 text-xs leading-6 text-amber-100">
           If Google shows <span className="font-semibold">access_denied</span>, add your account as a Test user in Google Cloud Console or publish the app.
         </div>
@@ -1864,6 +1886,7 @@ function MigrationPage() {
       <Navbar
         currentView={view}
         onViewChange={setView}
+        onCloseMenu={() => setMenuOpen(false)}
         theme={theme}
         onToggleTheme={() => setTheme((currentTheme) => (currentTheme === 'dark' ? 'light' : 'dark'))}
         jobCount={jobHistory.length}

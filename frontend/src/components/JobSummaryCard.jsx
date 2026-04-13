@@ -35,6 +35,8 @@ function JobSummaryCard({ job, progressPercent, loading, report, reliabilityStat
   }
 
   const statusLabel = displayStatus(job.status);
+  const safeProgress = Math.max(0, Math.min(100, Number(progressPercent || 0)));
+  const sourcePlaylistLabel = String(job.sourcePlaylistUrl || '').trim() || 'Source playlist link unavailable';
 
   return (
     <motion.section
@@ -47,7 +49,7 @@ function JobSummaryCard({ job, progressPercent, loading, report, reliabilityStat
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Migration Job</p>
           <h2 className="mt-2 text-2xl font-black tracking-tight text-white md:text-3xl">Track migration in progress</h2>
-          <p className="mt-2 break-all font-mono text-xs text-slate-300/80">{job.sourcePlaylistUrl}</p>
+          <p className="mt-2 break-all font-mono text-xs text-slate-300/80">{sourcePlaylistLabel}</p>
         </div>
         <motion.span
           className={`badge-status ${statusClass(statusLabel)}`}
@@ -61,13 +63,13 @@ function JobSummaryCard({ job, progressPercent, loading, report, reliabilityStat
       <div className="mt-4">
         <div className="mb-2 flex items-center justify-between text-sm text-slate-300">
           <span>Migration Progress</span>
-          <span className="font-semibold text-white">{progressPercent}%</span>
+          <span className="font-semibold text-white">{safeProgress}%</span>
         </div>
         <div className="relative h-3 overflow-hidden rounded-full bg-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <motion.div
             className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-sky-500 to-fuchsia-500 shadow-[0_0_24px_rgba(56,189,248,0.45)]"
             initial={{ width: 0 }}
-            animate={{ width: `${progressPercent}%` }}
+            animate={{ width: `${safeProgress}%` }}
             transition={{ duration: 0.5 }}
           />
           {loading ? <div className="absolute inset-0 w-1/3 animate-shimmer bg-white/20" /> : null}
@@ -85,7 +87,7 @@ function JobSummaryCard({ job, progressPercent, loading, report, reliabilityStat
       {loading ? (
         <div className="mt-4 flex items-center gap-3 rounded-2xl border border-cyan-300/10 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
           <span className="pulse-dot animate-glow-pulse" />
-          <span>Processing tracks with glowing async updates.</span>
+          <span>Processing tracks in the background with live progress updates.</span>
         </div>
       ) : null}
     </motion.section>

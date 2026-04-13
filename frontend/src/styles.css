@@ -28,6 +28,13 @@
     background: rgba(56, 189, 248, 0.35);
     color: white;
   }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible {
+    outline: 2px solid rgba(56, 189, 248, 0.75);
+    outline-offset: 2px;
+  }
 }
 
 @layer components {
@@ -161,6 +168,12 @@
 
   .history-row {
     @apply rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:-translate-y-0.5 hover:bg-white/10;
+  }
+
+  .history-row,
+  .stat-card,
+  .badge-status {
+    transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
   }
 
   .pulse-dot {

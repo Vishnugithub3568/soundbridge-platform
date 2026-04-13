@@ -66,8 +66,8 @@ public final class IssueCategoryClassifier {
             case "PERMISSION" -> "Reconnect the account and grant the requested OAuth permissions.";
             case "TOKEN" -> "Reconnect the account to refresh expired or invalid tokens.";
             case "TRANSIENT" -> "Retry now; temporary network or API instability is likely.";
-            case "NO_MATCH" -> "Review track metadata or try a different source playlist for better matches.";
-            case "PARTIAL" -> "Review partial tracks before retrying export to capture missing items.";
+            case "NO_MATCH" -> "Review track title and artist metadata, then retry the unmatched tracks.";
+            case "PARTIAL" -> "Inspect partial tracks and retry export to recover missing destination adds.";
             case "UNKNOWN" -> "Inspect failure details and retry after checking provider status.";
             default -> "No retry action required.";
         };

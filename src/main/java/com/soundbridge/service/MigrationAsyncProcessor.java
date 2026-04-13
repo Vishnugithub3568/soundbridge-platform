@@ -43,11 +43,11 @@ public class MigrationAsyncProcessor {
         "remix", "live", "cover", "karaoke", "explicit", "clean", "acoustic", "instrumental"
     );
     private static final String LOW_CONFIDENCE_FALLBACK_REASON =
-        "LOW_CONFIDENCE_FALLBACK: best candidate accepted to keep migration reliable";
+        "LOW_CONFIDENCE_FALLBACK: accepted closest candidate after confidence checks";
     private static final String NO_CANDIDATE_FALLBACK_REASON =
-        "SAFE_FALLBACK: no candidates returned, linked YouTube Music search result";
+        "SAFE_FALLBACK: no strong candidate returned; linked best YouTube Music search result";
     private static final String NO_SPOTIFY_CANDIDATE_FALLBACK_REASON =
-        "SAFE_FALLBACK: no Spotify candidates returned, linked Spotify search result";
+        "SAFE_FALLBACK: no strong Spotify candidate returned; linked best Spotify search result";
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
     private static final int BATCH_SIZE = 20;
     private static final int QUOTA_UNITS_PER_SPOTIFY_TO_YOUTUBE_TRACK = 101;

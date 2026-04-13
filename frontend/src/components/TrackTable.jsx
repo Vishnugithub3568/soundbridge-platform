@@ -90,7 +90,7 @@ function issueCategoryLabel(category) {
 }
 
 function ScoreVisualization({ score }) {
-  if (!score) return <span className="text-slate-500">-</span>;
+  if (score === null || score === undefined) return <span className="text-slate-500">-</span>;
   
   const percentage = Math.round(score * 100);
   const isGood = percentage >= 65;
@@ -112,7 +112,7 @@ function ScoreVisualization({ score }) {
 
 function TrackTable({ tracks }) {
   const [previewTrack, setPreviewTrack] = useState(null);
-  const [sortConfig, setSortConfig] = useState({ key: 'id', direction: 'asc' });
+  const [sortConfig, setSortConfig] = useState({ key: 'sourceTrackName', direction: 'asc' });
 
   const previewVideoId = useMemo(() => {
     if (!previewTrack) {
@@ -148,16 +148,17 @@ function TrackTable({ tracks }) {
   };
 
   const SortableHeader = ({ label, sortKey }) => (
-    <th 
-      className="py-2 pr-2 cursor-pointer hover:bg-stone-100 px-2 select-none"
-      onClick={() => handleSort(sortKey)}
-    >
-      <div className="flex items-center gap-1">
+    <th className="px-2 py-2 pr-2">
+      <button
+        type="button"
+        onClick={() => handleSort(sortKey)}
+        className="inline-flex w-full select-none items-center gap-1 rounded-md px-1 py-1 text-left text-xs uppercase tracking-[0.2em] text-slate-400 transition hover:bg-white/8 hover:text-slate-200"
+      >
         {label}
         <span className="text-xs">
           {sortConfig.key === sortKey ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
         </span>
-      </div>
+      </button>
     </th>
   );
 
@@ -188,7 +189,7 @@ function TrackTable({ tracks }) {
               <SortableHeader label="Artist" sortKey="sourceArtistName" />
               <SortableHeader label="Status" sortKey="matchStatus" />
               <SortableHeader label="Match Score" sortKey="matchScore" />
-              <th className="py-2 pr-2">YouTube Result</th>
+              <th className="py-2 pr-2">Destination Result</th>
               <th className="py-2 pr-2">Details</th>
             </tr>
           </thead>
@@ -240,7 +241,7 @@ function TrackTable({ tracks }) {
                             rel="noreferrer"
                             className="inline-block text-xs font-bold text-cyan-300 underline-offset-4 transition hover:text-cyan-200 hover:underline"
                           >
-                            Open result →
+                            Open destination →
                           </a>
                         </div>
                       </div>
@@ -256,7 +257,7 @@ function TrackTable({ tracks }) {
                     ) : null}
                     {reasonMeta.type === 'fallback' ? (
                       <span className="inline-flex items-center rounded-full border border-sky-400/20 bg-sky-400/10 px-2 py-1 font-semibold text-sky-200">
-                        Reliable Fallback: {reasonMeta.label}
+                        Fallback used: {reasonMeta.label}
                       </span>
                     ) : reasonMeta.type === 'warning' ? (
                       <span className="inline-flex items-center rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-1 font-semibold text-amber-200">

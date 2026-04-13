@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 function Navbar({
   currentView,
   onViewChange,
+  onCloseMenu,
   theme,
   onToggleTheme,
   jobCount,
@@ -12,6 +13,22 @@ function Navbar({
   navigationItems = []
 }) {
   const isDarkMode = theme === 'dark';
+
+  const resolveViewFromLabel = (item) => {
+    const normalized = String(item || '').toLowerCase();
+    if (normalized.includes('service')) return 'services';
+    if (normalized.includes('plan')) return 'plans';
+    if (normalized.includes('term')) return 'terms';
+    if (normalized.includes('help')) return 'help';
+    if (normalized.includes('playlist') || normalized.includes('library')) return 'library';
+    if (normalized.includes('transfer') || normalized.includes('migrat')) return 'transfer';
+    return 'home';
+  };
+
+  const handleMenuItemClick = (item) => {
+    onViewChange(resolveViewFromLabel(item));
+    onCloseMenu?.();
+  };
 
   return (
     <motion.nav
@@ -28,11 +45,13 @@ function Navbar({
               onClick={onToggleMenu}
               className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-400 via-sky-500 to-indigo-600 text-lg font-black text-white shadow-[0_0_28px_rgba(56,189,248,0.35)]"
               aria-label="Open navigation menu"
+              aria-expanded={menuOpen}
+              aria-controls="soundbridge-nav-menu"
             >
-              S
+              SB
             </button>
             {menuOpen ? (
-              <div className="absolute left-0 top-14 z-50 w-52 rounded-3xl border border-white/10 bg-slate-900/95 p-3 shadow-[0_30px_80px_rgba(2,6,23,0.65)] backdrop-blur-xl">
+              <div id="soundbridge-nav-menu" className="absolute left-0 top-14 z-50 w-52 rounded-3xl border border-white/10 bg-slate-900/95 p-3 shadow-[0_30px_80px_rgba(2,6,23,0.65)] backdrop-blur-xl">
                 <div className="mb-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                   Navigation
                 </div>
@@ -41,7 +60,7 @@ function Navbar({
                     <button
                       key={item}
                       type="button"
-                      onClick={() => onViewChange(item.toLowerCase().includes('service') ? 'services' : item.toLowerCase().includes('plan') ? 'plans' : item.toLowerCase().includes('term') ? 'terms' : item.toLowerCase().includes('help') ? 'help' : 'home')}
+                      onClick={() => handleMenuItemClick(item)}
                       className="rounded-2xl px-3 py-2 text-left text-sm font-semibold text-slate-200 transition hover:bg-white/8 hover:text-white"
                     >
                       {item}
